@@ -277,15 +277,15 @@ export default function Home() {
         <div className="mx-auto max-w-[1340px] px-6 sm:px-10 lg:px-14">
           <div className="grid gap-10 border-b border-[#c8beb0] pb-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
             <div>
-              <p className="eyebrow">Clear pricing</p>
+              <p className="eyebrow">Indicative pricing</p>
               <h2 className="mt-5 max-w-xl font-serif text-4xl leading-[1.03] tracking-[-0.04em] sm:text-5xl">
-                One scope. One price. No surprises.
+                A practical guide to your investment.
               </h2>
             </div>
             <p className="max-w-xl text-[17px] leading-7 text-[#52626c]">
-              Oriel is shaped around the property, not sold as a bundle of devices. Before any
-              work begins, you receive a written proposal with the agreed scope, deployment cost
-              and ongoing monthly service plan.
+              Most first-stage Oriel projects for a complex London home sit between £25,000 and
+              £75,000, followed by £750–£1,500 per month for ongoing operations. The exact figure
+              depends on the property, its existing systems and the level of support you need.
             </p>
           </div>
 
@@ -293,29 +293,33 @@ export default function Home() {
             {[
               [
                 '01',
-                'Assessment',
-                'A focused review of the house, its systems and controllable spending.',
-                'A fixed fee agreed before the visit.',
+                '£1,250',
+                'Initial assessment',
+                'A 1–2 day review of the house, its systems and controllable spending.',
+                'Standalone assessment',
               ],
               [
                 '02',
+                '£25k–£75k',
                 'Deployment',
-                'Installation, integration, testing and an owner-app handover as one agreed project.',
-                'One project quote.',
+                'The first phase: systems integration, sensors, configuration, testing and owner-app handover.',
+                'Typical one-off investment',
               ],
               [
                 '03',
+                '£750–£1,500',
                 'Ongoing operations',
-                'Monitoring, optimisation and support, sized to the property and its needs.',
-                'A clear monthly service plan.',
+                'Monthly monitoring, optimisation, maintenance coordination and support.',
+                'Per month',
               ],
-            ].map(([number, title, description, terms], index) => (
+            ].map(([number, price, title, description, terms], index) => (
               <article
                 key={title}
                 className={`flex min-h-72 flex-col border-b border-[#c8beb0] py-8 last:border-b-0 md:border-b-0 md:px-8 md:first:pl-0 md:last:pr-0 ${index < 2 ? 'md:border-r' : ''}`}
               >
                 <span className="text-[11px] font-semibold tracking-[0.2em] text-[#8f7040]">{number}</span>
-                <h3 className="mt-10 text-2xl font-medium tracking-[-0.03em] text-[#173246]">{title}</h3>
+                <p className="mt-8 font-serif text-4xl leading-none tracking-[-0.05em] text-[#173246]">{price}</p>
+                <h3 className="mt-4 text-2xl font-medium tracking-[-0.03em] text-[#173246]">{title}</h3>
                 <p className="mt-4 max-w-xs text-[15px] leading-6 text-[#596a73]">{description}</p>
                 <p className="mt-auto pt-8 text-sm font-semibold text-[#765a30]">{terms}</p>
               </article>
@@ -324,8 +328,9 @@ export default function Home() {
 
           <div className="mt-10 flex flex-col items-start justify-between gap-6 lg:flex-row lg:items-center">
             <p className="max-w-2xl text-[15px] leading-6 text-[#596a73]">
-              Your proposal separates essential work from optional improvements, so you can decide
-              what happens next and what you spend.
+              These are guide prices for a complex London property. Major building works, specialist
+              equipment or a listed-property retrofit may move the range; your proposal sets out the
+              exact scope and final figure before work begins.
             </p>
             <Button
               className="h-12 shrink-0 rounded-full bg-[#173850] px-6 text-[15px] hover:bg-[#0d283b]"
