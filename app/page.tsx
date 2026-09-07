@@ -313,14 +313,6 @@ export default function Home() {
                   <p className="mt-1 text-xs text-[#61717a]">First 12 months</p>
                 </div>
               </div>
-              <div className="mt-5 max-w-lg border border-[#b9a981] bg-[#f2eadb] px-5 py-4">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8f7040]">
-                  First-year return
-                </p>
-                <p className="mt-2 font-serif text-2xl tracking-[-0.04em] text-[#1b3040]">
-                  £31,400 saved − £28,000 Oriel plan = £3,400 ahead
-                </p>
-              </div>
             </div>
 
             <div className="overflow-hidden rounded-2xl border border-[#c2b7a5] bg-[#f9f6ef] shadow-[0_28px_80px_rgba(35,46,52,0.10)]">
