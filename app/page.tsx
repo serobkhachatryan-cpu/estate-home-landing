@@ -471,7 +471,7 @@ export default function Home() {
             </span>
             <span className="font-semibold tracking-[0.2em]">ORIEL</span>
           </div>
-          <p>Private home operations for London and the surrounding estates.</p>
+          <p>Private home operations for complex London estates.</p>
         </div>
       </footer>
     </main>
