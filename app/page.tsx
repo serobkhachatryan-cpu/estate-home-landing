@@ -38,13 +38,6 @@ const systems = [
   },
 ];
 
-const principles = [
-  'Built around your existing systems, not a forced replacement.',
-  'Local-first controls that keep essential routines working when the internet does not.',
-  'Clear roles for family, staff and trusted contractors.',
-  'A human team accountable for the whole picture.',
-];
-
 const estateStandards = [
   {
     number: '01',
@@ -199,16 +192,6 @@ export default function Home() {
             begin with how the property is actually used, connect what already works, and make
             the critical things visible, reliable and simple to act on.
           </p>
-          <div className="mt-11 grid gap-6 sm:grid-cols-2">
-            {principles.map((principle, index) => (
-              <div key={principle} className="border-t border-[#c9c1b2] pt-4">
-                <span className="text-xs font-semibold tracking-[0.16em] text-[#8c6b38]">
-                  0{index + 1}
-                </span>
-                <p className="mt-3 text-[15px] leading-6 text-[#30424f]">{principle}</p>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
