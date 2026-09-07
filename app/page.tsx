@@ -108,14 +108,6 @@ export default function Home() {
             </span>
             <span className="text-sm font-semibold tracking-[0.22em]">ORIEL</span>
           </a>
-          <div className="hidden items-center gap-8 text-sm text-white/75 md:flex">
-            <a className="transition hover:text-white" href="#systems">
-              Your home, unified
-            </a>
-            <a className="transition hover:text-white" href="#introduction">
-              Introductions
-            </a>
-          </div>
           <a
             className="inline-flex items-center gap-2 text-sm font-medium text-white transition hover:text-[#eac789]"
             href="#introduction"
@@ -161,13 +153,10 @@ export default function Home() {
 
         <div className="relative mx-auto w-full max-w-[1340px] px-6 pb-6 sm:px-10 sm:pb-8 lg:px-14">
           <div className="overflow-hidden border border-white/20 bg-[#0b2131]/70 shadow-[0_24px_60px_rgba(0,0,0,0.18)] backdrop-blur-sm">
-            <div className="flex items-center justify-between border-b border-white/15 px-5 py-3 sm:px-7">
+            <div className="border-b border-white/15 px-5 py-3 sm:px-7">
               <p className="flex items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-[#eac789]">
                 <span className="size-1.5 rounded-full bg-[#eac789] shadow-[0_0_0_4px_rgba(234,199,137,0.12)]" />
                 The Oriel standard
-              </p>
-              <p className="hidden text-xs tracking-[0.08em] text-white/50 sm:block">
-                Designed around exceptional homes
               </p>
             </div>
             <div className="grid md:grid-cols-3">
@@ -201,7 +190,7 @@ export default function Home() {
         <div className="mx-auto max-w-[1340px] px-6 sm:px-10 lg:px-14">
           <div className="flex flex-col justify-between gap-8 border-b border-[#bcb3a4] pb-12 md:flex-row md:items-end">
             <div>
-              <p className="eyebrow">One home. One accountable picture.</p>
+              <p className="eyebrow">One accountable picture.</p>
               <h2 className="mt-5 max-w-2xl font-serif text-4xl leading-[1.03] tracking-[-0.04em] sm:text-5xl">
                 See the systems that matter before they become a problem.
               </h2>
@@ -290,7 +279,7 @@ export default function Home() {
         <div className="relative mx-auto max-w-[1340px] px-6 sm:px-10 lg:px-14">
           <div className="grid gap-12 lg:grid-cols-[0.78fr_1.22fr] lg:items-end">
             <div>
-              <p className="eyebrow">Illustrative use case · Timothy&apos;s home</p>
+              <p className="eyebrow">Illustrative use case</p>
               <h2 className="mt-5 max-w-xl font-serif text-4xl leading-[1.03] tracking-[-0.04em] sm:text-5xl">
                 £10,400 less in annual controllable spend.
               </h2>
