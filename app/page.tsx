@@ -43,19 +43,16 @@ const estateStandards = [
     number: '01',
     title: 'One composed view',
     text: 'The systems and state of your property, at a glance.',
-    label: 'Clarity',
   },
   {
     number: '02',
     title: 'Fewer surprises',
     text: 'Patterns reveal what needs attention before cost builds.',
-    label: 'Foresight',
   },
   {
     number: '03',
     title: 'Made for complex homes',
     text: 'Calm, considered operations for London’s most demanding properties.',
-    label: 'Confidence',
   },
 ];
 
@@ -192,9 +189,6 @@ export default function Home() {
                       {standard.title}
                     </h3>
                     <p className="mt-3 max-w-[16rem] text-sm leading-5 text-white/63">{standard.text}</p>
-                    <span className="mt-auto pt-5 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#d9b779]">
-                      {standard.label}
-                    </span>
                   </div>
                 </article>
               ))}
@@ -242,7 +236,7 @@ export default function Home() {
           <div>
             <p className="eyebrow text-[#eac789]">The Oriel delivery plan</p>
             <h2 className="mt-5 max-w-sm font-serif text-4xl leading-[1.03] tracking-[-0.04em] sm:text-5xl">
-              A clear plan. A disciplined timeline.
+              A disciplined timeline.
             </h2>
           </div>
           <ol className="divide-y divide-white/15">
