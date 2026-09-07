@@ -162,9 +162,9 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="relative mx-auto w-full max-w-[1340px] px-6 pb-10 sm:px-10 lg:px-14">
+        <div className="relative mx-auto w-full max-w-[1340px] px-6 pb-6 sm:px-10 sm:pb-8 lg:px-14">
           <div className="overflow-hidden border border-white/20 bg-[#0b2131]/70 shadow-[0_24px_60px_rgba(0,0,0,0.18)] backdrop-blur-sm">
-            <div className="flex items-center justify-between border-b border-white/15 px-6 py-4 sm:px-8">
+            <div className="flex items-center justify-between border-b border-white/15 px-5 py-3 sm:px-7">
               <p className="flex items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-[#eac789]">
                 <span className="size-1.5 rounded-full bg-[#eac789] shadow-[0_0_0_4px_rgba(234,199,137,0.12)]" />
                 The Oriel standard
@@ -177,9 +177,9 @@ export default function Home() {
               {estateStandards.map((standard) => (
                 <article
                   key={standard.number}
-                  className="group relative min-h-56 overflow-hidden border-b border-white/15 px-6 py-7 last:border-b-0 md:border-b-0 md:border-r md:px-8 md:last:border-r-0"
+                  className="group relative min-h-0 overflow-hidden border-b border-white/15 px-5 py-5 last:border-b-0 md:min-h-44 md:border-b-0 md:border-r md:px-7 md:last:border-r-0"
                 >
-                  <span className="pointer-events-none absolute -right-1 -top-8 font-serif text-[9.5rem] leading-none tracking-[-0.1em] text-white/[0.035] transition duration-500 group-hover:text-[#eac789]/[0.09]">
+                  <span className="pointer-events-none absolute -right-1 -top-6 font-serif text-[7.5rem] leading-none tracking-[-0.1em] text-white/[0.035] transition duration-500 group-hover:text-[#eac789]/[0.09]">
                     {standard.number}
                   </span>
                   <div className="relative flex h-full flex-col">
@@ -189,11 +189,11 @@ export default function Home() {
                       </span>
                       <span className="h-px w-10 bg-gradient-to-r from-[#eac789] to-transparent" />
                     </div>
-                    <h3 className="mt-9 max-w-[15rem] font-serif text-[2rem] leading-[0.98] tracking-[-0.045em] text-white">
+                    <h3 className="mt-6 max-w-[15rem] font-serif text-[1.75rem] leading-[0.98] tracking-[-0.045em] text-white">
                       {standard.title}
                     </h3>
-                    <p className="mt-4 max-w-[16rem] text-sm leading-6 text-white/63">{standard.text}</p>
-                    <span className="mt-auto pt-7 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#d9b779]">
+                    <p className="mt-3 max-w-[16rem] text-sm leading-5 text-white/63">{standard.text}</p>
+                    <span className="mt-auto pt-5 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#d9b779]">
                       {standard.label}
                     </span>
                   </div>
