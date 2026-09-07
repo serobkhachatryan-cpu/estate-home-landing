@@ -95,11 +95,11 @@ export default function Home() {
               Private home operations · London
             </p>
             <h1 className="max-w-xl font-serif text-5xl leading-[0.97] tracking-[-0.055em] sm:text-6xl lg:text-7xl">
-              The house is looked after. Even when you are away.
+              Optimize your home&apos;s spending—even when you&apos;re away.
             </h1>
             <p className="mt-8 max-w-xl text-lg leading-8 text-white/78 sm:text-xl">
-              Your home is monitored, maintained, secure, efficient and explainable—without
-              making it feel like a control room.
+              Make every kilowatt, maintenance visit and system decision visible—then reduce
+              unnecessary cost without turning your home into a control room.
             </p>
             <div className="mt-10 flex flex-col gap-3 sm:flex-row">
               <Button

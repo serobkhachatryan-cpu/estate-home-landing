@@ -21,7 +21,7 @@ const cormorant = Cormorant_Garamond({
 export const metadata: Metadata = {
   title: 'Oriel — Private home operations',
   description:
-    'A quieter, more accountable way to run a substantial home in London.',
+    'Optimize your home’s spending with clear, accountable private home operations in London.',
 };
 
 export default function RootLayout({
