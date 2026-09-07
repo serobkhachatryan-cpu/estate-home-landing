@@ -197,17 +197,13 @@ export default function Home() {
 
       <section id="systems" className="bg-[#e7dfd0] py-24 sm:py-32">
         <div className="mx-auto max-w-[1340px] px-6 sm:px-10 lg:px-14">
-          <div className="flex flex-col justify-between gap-8 border-b border-[#bcb3a4] pb-12 md:flex-row md:items-end">
+          <div className="border-b border-[#bcb3a4] pb-12">
             <div>
               <p className="eyebrow">One home. One accountable picture.</p>
               <h2 className="mt-5 max-w-2xl font-serif text-4xl leading-[1.03] tracking-[-0.04em] sm:text-5xl">
                 See the systems that matter before they become a problem.
               </h2>
             </div>
-            <p className="max-w-sm text-[15px] leading-6 text-[#54636d]">
-              A considered layer around your home—not another collection of apps and
-              notifications.
-            </p>
           </div>
 
           <div className="grid md:grid-cols-2">
