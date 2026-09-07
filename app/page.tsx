@@ -210,30 +210,34 @@ export default function Home() {
       <section className="bg-[#102a3e] py-24 text-white sm:py-32">
         <div className="mx-auto grid max-w-[1340px] gap-14 px-6 sm:px-10 lg:grid-cols-[0.8fr_1.2fr] lg:px-14">
           <div>
-            <p className="eyebrow text-[#eac789]">The Oriel rhythm</p>
+            <p className="eyebrow text-[#eac789]">The Oriel delivery plan</p>
             <h2 className="mt-5 max-w-sm font-serif text-4xl leading-[1.03] tracking-[-0.04em] sm:text-5xl">
-              Designed once. Watched with care.
+              A clear plan. A disciplined timeline.
             </h2>
           </div>
           <ol className="divide-y divide-white/15">
             {[
               [
-                'Understand',
-                'We learn the house, the people who use it and the systems already in place.',
+                'Assessment',
+                '1–2 days',
+                'We assess the home, its systems, fuel and energy use, and the opportunities worth addressing.',
               ],
               [
-                'Connect',
-                'We make the critical layers work together without disrupting how the home feels.',
+                'Planning & refining',
+                '1–2 days',
+                'We build and refine a practical plan around your priorities and how you want the home to operate.',
               ],
               [
-                'Watch',
-                'The home is quietly monitored for unusual patterns, risks and maintenance needs.',
+                'Deployment',
+                '2 weeks maximum',
+                'We install, connect and test the agreed systems with minimal disruption to the household.',
               ],
               [
-                'Explain',
-                'You receive a clear picture of what happened, what changed and what merits attention.',
+                'Ongoing support',
+                'Continuous',
+                'We continue to monitor, optimise, maintain and support the home as its needs evolve.',
               ],
-            ].map(([title, text], index) => (
+            ].map(([title, duration, text], index) => (
               <li
                 key={title}
                 className="grid grid-cols-[44px_1fr] gap-5 py-6 sm:grid-cols-[90px_1fr]"
@@ -242,7 +246,12 @@ export default function Home() {
                   0{index + 1}
                 </span>
                 <div>
-                  <h3 className="text-xl font-medium">{title}</h3>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <h3 className="text-xl font-medium">{title}</h3>
+                    <span className="w-fit rounded-full border border-[#eac789]/40 bg-[#eac789]/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-[#eac789]">
+                      {duration}
+                    </span>
+                  </div>
                   <p className="mt-2 max-w-xl text-[15px] leading-6 text-white/65">{text}</p>
                 </div>
               </li>
