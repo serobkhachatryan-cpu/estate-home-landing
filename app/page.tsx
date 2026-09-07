@@ -254,7 +254,7 @@ export default function Home() {
               [
                 'Deployment',
                 '2 weeks maximum',
-                'We install, connect and test the agreed systems with minimal disruption to the household.',
+                'We install, connect and test the agreed systems with minimal disruption. You receive the Oriel app to see and control your property from anywhere.',
               ],
               [
                 'Ongoing support',
