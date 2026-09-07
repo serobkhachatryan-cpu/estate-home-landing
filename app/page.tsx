@@ -377,10 +377,6 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <p className="mt-8 max-w-3xl text-xs leading-5 text-[#68757b]">
-            Illustrative scenario only. Results depend on the property, existing equipment, energy
-            tariffs, household use and the agreed scope of work; this is not a performance guarantee.
-          </p>
         </div>
       </section>
 
