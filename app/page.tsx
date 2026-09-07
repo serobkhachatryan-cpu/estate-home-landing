@@ -183,11 +183,10 @@ export default function Home() {
                     {standard.number}
                   </span>
                   <div className="relative flex h-full flex-col">
-                    <div className="flex items-center justify-between">
+                    <div>
                       <span className="text-[11px] font-semibold tracking-[0.2em] text-[#eac789]">
                         {standard.number}
                       </span>
-                      <span className="h-px w-10 bg-gradient-to-r from-[#eac789] to-transparent" />
                     </div>
                     <h3 className="mt-6 max-w-[15rem] font-serif text-[1.75rem] leading-[0.98] tracking-[-0.045em] text-white">
                       {standard.title}
