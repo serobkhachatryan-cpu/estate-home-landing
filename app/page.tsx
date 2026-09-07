@@ -273,6 +273,72 @@ export default function Home() {
         </div>
       </section>
 
+      <section id="pricing" className="bg-[#f5f1e9] py-24 sm:py-32">
+        <div className="mx-auto max-w-[1340px] px-6 sm:px-10 lg:px-14">
+          <div className="grid gap-10 border-b border-[#c8beb0] pb-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
+            <div>
+              <p className="eyebrow">Clear pricing</p>
+              <h2 className="mt-5 max-w-xl font-serif text-4xl leading-[1.03] tracking-[-0.04em] sm:text-5xl">
+                One scope. One price. No surprises.
+              </h2>
+            </div>
+            <p className="max-w-xl text-[17px] leading-7 text-[#52626c]">
+              Oriel is shaped around the property, not sold as a bundle of devices. Before any
+              work begins, you receive a written proposal with the agreed scope, deployment cost
+              and ongoing monthly service plan.
+            </p>
+          </div>
+
+          <div className="grid border-b border-[#c8beb0] md:grid-cols-3">
+            {[
+              [
+                '01',
+                'Assessment',
+                'A focused review of the house, its systems and controllable spending.',
+                'A fixed fee agreed before the visit.',
+              ],
+              [
+                '02',
+                'Deployment',
+                'Installation, integration, testing and an owner-app handover as one agreed project.',
+                'One project quote.',
+              ],
+              [
+                '03',
+                'Ongoing operations',
+                'Monitoring, optimisation and support, sized to the property and its needs.',
+                'A clear monthly service plan.',
+              ],
+            ].map(([number, title, description, terms], index) => (
+              <article
+                key={title}
+                className={`flex min-h-72 flex-col border-b border-[#c8beb0] py-8 last:border-b-0 md:border-b-0 md:px-8 md:first:pl-0 md:last:pr-0 ${index < 2 ? 'md:border-r' : ''}`}
+              >
+                <span className="text-[11px] font-semibold tracking-[0.2em] text-[#8f7040]">{number}</span>
+                <h3 className="mt-10 text-2xl font-medium tracking-[-0.03em] text-[#173246]">{title}</h3>
+                <p className="mt-4 max-w-xs text-[15px] leading-6 text-[#596a73]">{description}</p>
+                <p className="mt-auto pt-8 text-sm font-semibold text-[#765a30]">{terms}</p>
+              </article>
+            ))}
+          </div>
+
+          <div className="mt-10 flex flex-col items-start justify-between gap-6 lg:flex-row lg:items-center">
+            <p className="max-w-2xl text-[15px] leading-6 text-[#596a73]">
+              Your proposal separates essential work from optional improvements, so you can decide
+              what happens next and what you spend.
+            </p>
+            <Button
+              className="h-12 shrink-0 rounded-full bg-[#173850] px-6 text-[15px] hover:bg-[#0d283b]"
+              onClick={() =>
+                document.getElementById('introduction')?.scrollIntoView({ behavior: 'smooth' })
+              }
+            >
+              Request a private proposal <ArrowUpRight className="size-4" />
+            </Button>
+          </div>
+        </div>
+      </section>
+
       <section className="relative overflow-hidden bg-[#e7dfd0] py-24 sm:py-32">
         <div className="pointer-events-none absolute right-[-12rem] top-[-14rem] size-[34rem] rounded-full border border-[#c3ad85]/30" />
         <div className="pointer-events-none absolute right-[-3rem] top-[-5rem] size-[22rem] rounded-full border border-[#c3ad85]/25" />
