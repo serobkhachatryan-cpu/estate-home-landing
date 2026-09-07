@@ -119,8 +119,8 @@ export default function Home() {
               Optimize your home&apos;s spending—even when you&apos;re away.
             </h1>
             <p className="mt-8 max-w-xl text-lg leading-8 text-white/78 sm:text-xl">
-              Make every kilowatt, maintenance visit and system decision visible—then reduce
-              unnecessary costs.
+              Make every kilowatt, litre of fuel, maintenance visit and system decision
+              visible—then reduce unnecessary costs.
             </p>
             <div className="mt-10 flex flex-col gap-3 sm:flex-row">
               <Button
