@@ -59,30 +59,30 @@ const estateStandards = [
 const timothySavings = [
   {
     category: 'Electricity',
-    before: '£12,600',
-    after: '£9,750',
-    saved: '£2,850',
+    before: '£20,000',
+    after: '£13,300',
+    saved: '£6,700',
     action: 'Schedules aligned to occupancy',
   },
   {
     category: 'Heating fuel & standby power',
-    before: '£9,800',
-    after: '£7,400',
-    saved: '£2,400',
+    before: '£23,400',
+    after: '£12,200',
+    saved: '£11,200',
     action: 'Demand and runtime made visible',
   },
   {
     category: 'Reactive maintenance & call-outs',
-    before: '£6,400',
-    after: '£3,800',
-    saved: '£2,600',
+    before: '£15,400',
+    after: '£6,000',
+    saved: '£9,400',
     action: 'Early warnings and planned service',
   },
   {
     category: 'Water loss & avoidable repairs',
-    before: '£3,600',
-    after: '£1,050',
-    saved: '£2,550',
+    before: '£6,600',
+    after: '£2,500',
+    saved: '£4,100',
     action: 'Slow leak identified early',
   },
 ];
@@ -290,28 +290,36 @@ export default function Home() {
             <div>
               <p className="eyebrow">Illustrative use case</p>
               <h2 className="mt-5 max-w-xl font-serif text-4xl leading-[1.03] tracking-[-0.04em] sm:text-5xl">
-                £10,400 less in annual controllable spend.
+                £31,400 less in annual controllable spend.
               </h2>
               <p className="mt-6 max-w-lg text-[17px] leading-7 text-[#52626c]">
                 In this first-year scenario, Timothy&apos;s substantial London home moves from
-                reactive oversight to measured operations—without replacing everything already
-                in place.
+                reactive oversight to measured operations—enough to cover a £28,000 first-year
+                Oriel plan and leave the owner ahead.
               </p>
               <div className="mt-9 grid max-w-lg grid-cols-2 border-y border-[#bcb3a4]">
                 <div className="py-5 pr-5">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8f7040]">
                     Before Oriel
                   </p>
-                  <p className="mt-2 font-serif text-3xl tracking-[-0.04em] text-[#1b3040]">£32,400</p>
+                  <p className="mt-2 font-serif text-3xl tracking-[-0.04em] text-[#1b3040]">£65,400</p>
                   <p className="mt-1 text-xs text-[#61717a]">Annual controllable spend</p>
                 </div>
                 <div className="border-l border-[#bcb3a4] py-5 pl-5">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8f7040]">
                     After Oriel
                   </p>
-                  <p className="mt-2 font-serif text-3xl tracking-[-0.04em] text-[#1b3040]">£22,000</p>
+                  <p className="mt-2 font-serif text-3xl tracking-[-0.04em] text-[#1b3040]">£34,000</p>
                   <p className="mt-1 text-xs text-[#61717a]">First 12 months</p>
                 </div>
+              </div>
+              <div className="mt-5 max-w-lg border border-[#b9a981] bg-[#f2eadb] px-5 py-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8f7040]">
+                  First-year return
+                </p>
+                <p className="mt-2 font-serif text-2xl tracking-[-0.04em] text-[#1b3040]">
+                  £31,400 saved − £28,000 Oriel plan = £3,400 ahead
+                </p>
               </div>
             </div>
 
@@ -326,7 +334,7 @@ export default function Home() {
                   </h3>
                 </div>
                 <div className="border-l-2 border-[#a98043] pl-4">
-                  <p className="font-serif text-3xl leading-none tracking-[-0.04em] text-[#153044]">32%</p>
+                  <p className="font-serif text-3xl leading-none tracking-[-0.04em] text-[#153044]">48%</p>
                   <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7d683e]">
                     lower spend
                   </p>
@@ -360,9 +368,9 @@ export default function Home() {
                   <tfoot className="bg-[#f0eadf] text-[#173246]">
                     <tr>
                       <td className="px-6 py-4 text-sm font-semibold sm:px-8">Total</td>
-                      <td className="px-4 py-4 text-sm font-semibold">£32,400</td>
-                      <td className="px-4 py-4 text-sm font-semibold">£22,000</td>
-                      <td className="px-6 py-4 text-right text-sm font-bold text-[#7d5b27] sm:px-8">£10,400</td>
+                      <td className="px-4 py-4 text-sm font-semibold">£65,400</td>
+                      <td className="px-4 py-4 text-sm font-semibold">£34,000</td>
+                      <td className="px-6 py-4 text-right text-sm font-bold text-[#7d5b27] sm:px-8">£31,400</td>
                     </tr>
                   </tfoot>
                 </table>
