@@ -59,6 +59,37 @@ const estateStandards = [
   },
 ];
 
+const timothySavings = [
+  {
+    category: 'Electricity',
+    before: '£12,600',
+    after: '£9,750',
+    saved: '£2,850',
+    action: 'Schedules aligned to occupancy',
+  },
+  {
+    category: 'Heating fuel & standby power',
+    before: '£9,800',
+    after: '£7,400',
+    saved: '£2,400',
+    action: 'Demand and runtime made visible',
+  },
+  {
+    category: 'Reactive maintenance & call-outs',
+    before: '£6,400',
+    after: '£3,800',
+    saved: '£2,600',
+    action: 'Early warnings and planned service',
+  },
+  {
+    category: 'Water loss & avoidable repairs',
+    before: '£3,600',
+    after: '£1,050',
+    saved: '£2,550',
+    action: 'Slow leak identified early',
+  },
+];
+
 export default function Home() {
   const [submitted, setSubmitted] = useState(false);
 
@@ -257,6 +288,100 @@ export default function Home() {
               </li>
             ))}
           </ol>
+        </div>
+      </section>
+
+      <section className="relative overflow-hidden bg-[#e7dfd0] py-24 sm:py-32">
+        <div className="pointer-events-none absolute right-[-12rem] top-[-14rem] size-[34rem] rounded-full border border-[#c3ad85]/30" />
+        <div className="pointer-events-none absolute right-[-3rem] top-[-5rem] size-[22rem] rounded-full border border-[#c3ad85]/25" />
+        <div className="relative mx-auto max-w-[1340px] px-6 sm:px-10 lg:px-14">
+          <div className="grid gap-12 lg:grid-cols-[0.78fr_1.22fr] lg:items-end">
+            <div>
+              <p className="eyebrow">Illustrative use case · Timothy&apos;s home</p>
+              <h2 className="mt-5 max-w-xl font-serif text-4xl leading-[1.03] tracking-[-0.04em] sm:text-5xl">
+                £10,400 less in annual controllable spend.
+              </h2>
+              <p className="mt-6 max-w-lg text-[17px] leading-7 text-[#52626c]">
+                In this first-year scenario, Timothy&apos;s substantial London home moves from
+                reactive oversight to measured operations—without replacing everything already
+                in place.
+              </p>
+              <div className="mt-9 grid max-w-lg grid-cols-2 border-y border-[#bcb3a4]">
+                <div className="py-5 pr-5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8f7040]">
+                    Before Oriel
+                  </p>
+                  <p className="mt-2 font-serif text-3xl tracking-[-0.04em] text-[#1b3040]">£32,400</p>
+                  <p className="mt-1 text-xs text-[#61717a]">Annual controllable spend</p>
+                </div>
+                <div className="border-l border-[#bcb3a4] py-5 pl-5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8f7040]">
+                    After Oriel
+                  </p>
+                  <p className="mt-2 font-serif text-3xl tracking-[-0.04em] text-[#1b3040]">£22,000</p>
+                  <p className="mt-1 text-xs text-[#61717a]">First 12 months</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-[#c2b7a5] bg-[#f9f6ef] shadow-[0_28px_80px_rgba(35,46,52,0.10)]">
+              <div className="flex flex-col justify-between gap-5 border-b border-[#d5ccbe] bg-[#f0eadf] px-6 py-6 sm:flex-row sm:items-end sm:px-8">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8f7040]">
+                    Annual operating costs
+                  </p>
+                  <h3 className="mt-2 font-serif text-3xl tracking-[-0.04em] text-[#153044]">
+                    Before / after Oriel
+                  </h3>
+                </div>
+                <div className="border-l-2 border-[#a98043] pl-4">
+                  <p className="font-serif text-3xl leading-none tracking-[-0.04em] text-[#153044]">32%</p>
+                  <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7d683e]">
+                    lower spend
+                  </p>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[620px] text-left">
+                  <thead className="text-[10px] font-semibold uppercase tracking-[0.13em] text-[#7b817d]">
+                    <tr className="border-b border-[#ded6c9]">
+                      <th className="px-6 py-4 font-semibold sm:px-8">Area</th>
+                      <th className="px-4 py-4 font-semibold">Before</th>
+                      <th className="px-4 py-4 font-semibold">After</th>
+                      <th className="px-6 py-4 text-right font-semibold sm:px-8">Saved</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {timothySavings.map((item) => (
+                      <tr key={item.category} className="border-b border-[#e5ded2] last:border-0">
+                        <td className="px-6 py-4 sm:px-8">
+                          <p className="text-sm font-medium text-[#243a48]">{item.category}</p>
+                          <p className="mt-1 text-xs text-[#74808a]">{item.action}</p>
+                        </td>
+                        <td className="px-4 py-4 text-sm text-[#596a73]">{item.before}</td>
+                        <td className="px-4 py-4 text-sm text-[#596a73]">{item.after}</td>
+                        <td className="px-6 py-4 text-right text-sm font-semibold text-[#886630] sm:px-8">
+                          {item.saved}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-[#f0eadf] text-[#173246]">
+                    <tr>
+                      <td className="px-6 py-4 text-sm font-semibold sm:px-8">Total</td>
+                      <td className="px-4 py-4 text-sm font-semibold">£32,400</td>
+                      <td className="px-4 py-4 text-sm font-semibold">£22,000</td>
+                      <td className="px-6 py-4 text-right text-sm font-bold text-[#7d5b27] sm:px-8">£10,400</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+          <p className="mt-8 max-w-3xl text-xs leading-5 text-[#68757b]">
+            Illustrative scenario only. Results depend on the property, existing equipment, energy
+            tariffs, household use and the agreed scope of work; this is not a performance guarantee.
+          </p>
         </div>
       </section>
 
