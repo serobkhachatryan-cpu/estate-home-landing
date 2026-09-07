@@ -233,24 +233,28 @@ export default function Home() {
               [
                 'Assessment',
                 '1–2 days',
+                '£1,000',
                 'We assess the home, its systems, fuel and energy use, and the opportunities worth addressing.',
               ],
               [
                 'Planning & refining',
                 '1–2 days',
+                '£1,000',
                 'We build and refine a practical plan around your priorities and how you want the home to operate.',
               ],
               [
                 'Deployment',
                 '2 weeks maximum',
+                'Up to £25k',
                 'We install, connect and test the agreed systems with minimal disruption. You receive the Oriel app to see and control your property from anywhere.',
               ],
               [
-                'Ongoing support',
+                'Ongoing operations',
                 'Continuous',
+                '£1,000 / year',
                 'We continue to monitor, optimise, maintain and support the home as its needs evolve.',
               ],
-            ].map(([title, duration, text], index) => (
+            ].map(([title, duration, price, text], index) => (
               <li
                 key={title}
                 className="grid grid-cols-[44px_1fr] gap-5 py-6 sm:grid-cols-[90px_1fr]"
@@ -261,86 +265,20 @@ export default function Home() {
                 <div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <h3 className="text-xl font-medium">{title}</h3>
-                    <span className="w-fit rounded-full border border-[#eac789]/40 bg-[#eac789]/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-[#eac789]">
-                      {duration}
-                    </span>
+                    <div className="flex items-center gap-3 sm:flex-col sm:items-end sm:gap-1">
+                      <span className="font-serif text-2xl leading-none tracking-[-0.04em] text-[#f2d49e]">
+                        {price}
+                      </span>
+                      <span className="w-fit rounded-full border border-[#eac789]/40 bg-[#eac789]/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-[#eac789]">
+                        {duration}
+                      </span>
+                    </div>
                   </div>
                   <p className="mt-2 max-w-xl text-[15px] leading-6 text-white/65">{text}</p>
                 </div>
               </li>
             ))}
           </ol>
-        </div>
-      </section>
-
-      <section id="pricing" className="bg-[#f5f1e9] py-24 sm:py-32">
-        <div className="mx-auto max-w-[1340px] px-6 sm:px-10 lg:px-14">
-          <div className="grid gap-10 border-b border-[#c8beb0] pb-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
-            <div>
-              <p className="eyebrow">Indicative pricing</p>
-              <h2 className="mt-5 max-w-xl font-serif text-4xl leading-[1.03] tracking-[-0.04em] sm:text-5xl">
-                A practical guide to your investment.
-              </h2>
-            </div>
-            <p className="max-w-xl text-[17px] leading-7 text-[#52626c]">
-              Most first-stage Oriel projects for a complex London home sit between £25,000 and
-              £75,000, followed by £750–£1,500 per month for ongoing operations. The exact figure
-              depends on the property, its existing systems and the level of support you need.
-            </p>
-          </div>
-
-          <div className="grid border-b border-[#c8beb0] md:grid-cols-3">
-            {[
-              [
-                '01',
-                '£1,250',
-                'Initial assessment',
-                'A 1–2 day review of the house, its systems and controllable spending.',
-                'Standalone assessment',
-              ],
-              [
-                '02',
-                '£25k–£75k',
-                'Deployment',
-                'The first phase: systems integration, sensors, configuration, testing and owner-app handover.',
-                'Typical one-off investment',
-              ],
-              [
-                '03',
-                '£750–£1,500',
-                'Ongoing operations',
-                'Monthly monitoring, optimisation, maintenance coordination and support.',
-                'Per month',
-              ],
-            ].map(([number, price, title, description, terms], index) => (
-              <article
-                key={title}
-                className={`flex min-h-72 flex-col border-b border-[#c8beb0] py-8 last:border-b-0 md:border-b-0 md:px-8 md:first:pl-0 md:last:pr-0 ${index < 2 ? 'md:border-r' : ''}`}
-              >
-                <span className="text-[11px] font-semibold tracking-[0.2em] text-[#8f7040]">{number}</span>
-                <p className="mt-8 font-serif text-4xl leading-none tracking-[-0.05em] text-[#173246]">{price}</p>
-                <h3 className="mt-4 text-2xl font-medium tracking-[-0.03em] text-[#173246]">{title}</h3>
-                <p className="mt-4 max-w-xs text-[15px] leading-6 text-[#596a73]">{description}</p>
-                <p className="mt-auto pt-8 text-sm font-semibold text-[#765a30]">{terms}</p>
-              </article>
-            ))}
-          </div>
-
-          <div className="mt-10 flex flex-col items-start justify-between gap-6 lg:flex-row lg:items-center">
-            <p className="max-w-2xl text-[15px] leading-6 text-[#596a73]">
-              These are guide prices for a complex London property. Major building works, specialist
-              equipment or a listed-property retrofit may move the range; your proposal sets out the
-              exact scope and final figure before work begins.
-            </p>
-            <Button
-              className="h-12 shrink-0 rounded-full bg-[#173850] px-6 text-[15px] hover:bg-[#0d283b]"
-              onClick={() =>
-                document.getElementById('introduction')?.scrollIntoView({ behavior: 'smooth' })
-              }
-            >
-              Request a private proposal <ArrowUpRight className="size-4" />
-            </Button>
-          </div>
         </div>
       </section>
 
