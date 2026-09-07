@@ -225,14 +225,14 @@ export default function Home() {
           <div>
             <p className="eyebrow text-[#eac789]">The Oriel delivery plan</p>
             <h2 className="mt-5 max-w-sm font-serif text-4xl leading-[1.03] tracking-[-0.04em] sm:text-5xl">
-              A disciplined timeline.
+              A disciplined timeline and clear pricing.
             </h2>
           </div>
           <ol className="divide-y divide-white/15">
             {[
               [
                 'Assessment',
-                '1–2 days',
+                '1 day',
                 '£1,000',
                 'We assess the home, its systems, fuel and energy use, and the opportunities worth addressing.',
               ],
