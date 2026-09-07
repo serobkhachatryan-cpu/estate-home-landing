@@ -81,9 +81,6 @@ export default function Home() {
             <span className="text-sm font-semibold tracking-[0.22em]">ORIEL</span>
           </a>
           <div className="hidden items-center gap-8 text-sm text-white/75 md:flex">
-            <a className="transition hover:text-white" href="#approach">
-              How it works
-            </a>
             <a className="transition hover:text-white" href="#systems">
               Your home, unified
             </a>
@@ -126,9 +123,9 @@ export default function Home() {
               </Button>
               <a
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-white/25 px-6 text-[15px] font-medium transition hover:border-white/60 hover:bg-white/8"
-                href="#approach"
+                href="#systems"
               >
-                See the approach <ArrowDownRight className="size-4" />
+                Explore the systems <ArrowDownRight className="size-4" />
               </a>
             </div>
           </div>
@@ -176,34 +173,20 @@ export default function Home() {
         </div>
       </section>
 
-      <section
-        id="approach"
-        className="mx-auto grid max-w-[1340px] gap-16 px-6 py-24 sm:px-10 lg:grid-cols-[0.92fr_1.08fr] lg:px-14 lg:py-32"
-      >
-        <div>
-          <p className="eyebrow">A quieter kind of intelligent home</p>
-          <h2 className="mt-5 max-w-md font-serif text-4xl leading-[1.03] tracking-[-0.04em] sm:text-5xl">
-            Less time checking. More confidence leaving.
-          </h2>
-        </div>
-        <div className="max-w-2xl">
-          <p className="text-xl leading-9 text-[#384957]">
-            Oriel brings the systems that run a substantial home into one managed service. We
-            begin with how the property is actually used, connect what already works, and make
-            the critical things visible, reliable and simple to act on.
-          </p>
-        </div>
-      </section>
-
       <section id="systems" className="bg-[#e7dfd0] py-24 sm:py-32">
         <div className="mx-auto max-w-[1340px] px-6 sm:px-10 lg:px-14">
-          <div className="border-b border-[#bcb3a4] pb-12">
+          <div className="flex flex-col justify-between gap-8 border-b border-[#bcb3a4] pb-12 md:flex-row md:items-end">
             <div>
               <p className="eyebrow">One home. One accountable picture.</p>
               <h2 className="mt-5 max-w-2xl font-serif text-4xl leading-[1.03] tracking-[-0.04em] sm:text-5xl">
                 See the systems that matter before they become a problem.
               </h2>
             </div>
+            <p className="max-w-sm text-[15px] leading-6 text-[#54636d]">
+              Oriel brings the systems that run a substantial home into one managed service. We
+              begin with how the property is actually used, connect what already works, and make
+              the critical things visible, reliable and simple to act on.
+            </p>
           </div>
 
           <div className="grid md:grid-cols-2">
