@@ -15,7 +15,22 @@
   --color-ring: var(--ring);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
   --radius: 0.75rem;
+}
+
+.font-serif {
+  font-family: var(--font-geist-serif), 'Times New Roman', serif;
 }
 
 :root {
@@ -23,6 +38,17 @@
   --foreground: #102030;
   --primary: #173850;
   --primary-foreground: #ffffff;
+  --secondary: #e7dfd0;
+  --secondary-foreground: #102030;
+  --muted: #efe8dc;
+  --muted-foreground: #5a6a73;
+  --accent: #f0eadf;
+  --accent-foreground: #102030;
+  --destructive: #8a4b3a;
+  --popover: #fcfbf8;
+  --popover-foreground: #102030;
+  --card: #fcfbf8;
+  --card-foreground: #102030;
   --border: #d4cdbf;
   --input: #cfc7b9;
   --ring: #a88348;

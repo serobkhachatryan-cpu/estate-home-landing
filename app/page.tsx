@@ -6,11 +6,9 @@ import {
   Bolt,
   Droplets,
   LockKeyhole,
-  MoveRight,
-  ShieldCheck,
-  ThermometerSun,
   Wrench,
 } from 'lucide-react';
+import { AppLink } from '@/components/app/app-link';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,72 +16,60 @@ import { Input } from '@/components/ui/input';
 const systems = [
   {
     icon: Bolt,
-    title: 'Energy & climate',
-    text: 'See where energy goes. Let the home respond intelligently to occupancy, weather and agreed limits.',
+    title: 'Electricity',
+    text: 'See whether power bought useful work or unnecessary idle load. Start with the costs that repeat every day.',
   },
   {
     icon: Droplets,
-    title: 'Water & wellbeing',
-    text: 'Catch leaks, freeze risk and humidity issues before they become expensive repairs.',
-  },
-  {
-    icon: ShieldCheck,
-    title: 'Security & perimeter',
-    text: 'Bring gates, access, alarms and cameras into one clear, privacy-conscious picture.',
+    title: 'Water',
+    text: 'Separate normal household use from possible loss, and surface an overnight rise before it becomes a repair.',
   },
   {
     icon: Wrench,
-    title: 'Home health',
-    text: 'Know when a boiler, network, pump or critical system needs attention—before the house tells you.',
+    title: 'Supporting care',
+    text: 'Put planned maintenance in the same picture, so you can see how care protects the systems you pay to run.',
   },
 ];
 
 const estateStandards = [
   {
     number: '01',
-    title: 'One composed view',
-    text: 'The systems and state of your property, at a glance.',
+    title: 'Paid → received',
+    text: 'Understand what you spent and what that money actually put to use or protected.',
   },
   {
     number: '02',
-    title: 'Fewer surprises',
-    text: 'Patterns reveal what needs attention before cost builds.',
+    title: 'Normal → needs a look',
+    text: 'See only the exceptions that deserve your attention—not an endless dashboard of signals.',
   },
   {
     number: '03',
-    title: 'Made for complex homes',
-    text: 'Calm, considered operations for London’s most demanding properties.',
+    title: 'Now → next',
+    text: 'Begin with electricity and water, then expand only when the first picture is trusted.',
   },
 ];
 
-const timothySavings = [
+const pilotValue = [
   {
     category: 'Electricity',
-    before: '£20,000',
-    after: '£13,300',
-    saved: '£6,700',
-    action: 'Schedules aligned to occupancy',
+    paid: '£980',
+    received: 'Useful power',
+    action: 'Lighting, plant and appliances on the right schedule',
+    exception: 'Overnight standby is a little high',
   },
   {
-    category: 'Heating fuel & standby power',
-    before: '£23,400',
-    after: '£12,200',
-    saved: '£11,200',
-    action: 'Demand and runtime made visible',
+    category: 'Water',
+    paid: '£90',
+    received: 'Use + loss avoided',
+    action: 'Normal household use with an overnight rise caught early',
+    exception: 'Brief overnight flow rise to review',
   },
   {
-    category: 'Reactive maintenance & call-outs',
-    before: '£15,400',
-    after: '£6,000',
-    saved: '£9,400',
-    action: 'Early warnings and planned service',
-  },
-  {
-    category: 'Water loss & avoidable repairs',
-    before: '£6,600',
-    after: '£2,500',
-    saved: '£4,100',
-    action: 'Slow leak identified early',
+    category: 'Supporting care',
+    paid: '£350',
+    received: 'Reliability protected',
+    action: 'Planned filter service supports the priority utilities',
+    exception: 'No exception this month',
   },
 ];
 
@@ -102,11 +88,17 @@ export default function Home() {
         <div className="absolute inset-x-0 bottom-0 h-48 bg-[linear-gradient(0deg,rgba(8,24,39,0.78),transparent)]" />
 
         <nav className="relative mx-auto flex max-w-[1340px] items-center justify-between px-6 py-7 sm:px-10 lg:px-14">
-          <a className="flex items-center gap-3" href="#top" aria-label="Oriel home">
+          <a
+            className="flex items-center gap-3"
+            href="#top"
+            aria-label="Oriel home"
+          >
             <span className="flex size-9 items-center justify-center rounded-full border border-white/35 bg-white/10 font-serif text-lg italic">
               O
             </span>
-            <span className="text-sm font-semibold tracking-[0.22em]">ORIEL</span>
+            <span className="text-sm font-semibold tracking-[0.22em]">
+              ORIEL
+            </span>
           </a>
           <a
             className="inline-flex items-center gap-2 text-sm font-medium text-white transition hover:text-[#eac789]"
@@ -129,23 +121,23 @@ export default function Home() {
               Optimize your home&apos;s spending—even when you&apos;re away.
             </h1>
             <p className="mt-8 max-w-xl text-lg leading-8 text-white/78 sm:text-xl">
-              Make every kilowatt, litre of fuel, maintenance visit, and system decision
-              visible—then reduce unnecessary costs.
+              Start with a simple view of what you paid, what it delivered, and
+              what needs a look—beginning with electricity, water and the care
+              that keeps them working.
             </p>
             <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-              <Button
-                className="h-12 rounded-full bg-[#eac789] px-6 text-[15px] font-semibold text-[#122434] hover:bg-[#f2d49e]"
-                onClick={() =>
-                  document.getElementById('introduction')?.scrollIntoView({ behavior: 'smooth' })
-                }
+              <AppLink
+                href="/app"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#eac789] px-6 text-[15px] font-semibold text-[#122434] transition hover:bg-[#f2d49e]"
               >
-                Arrange a private introduction <MoveRight className="size-4" />
-              </Button>
+                See the Stage 1 product <ArrowUpRight className="size-4" />
+              </AppLink>
               <a
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-white/25 px-6 text-[15px] font-medium transition hover:border-white/60 hover:bg-white/8"
-                href="#systems"
+                href="#introduction"
               >
-                Explore the systems <ArrowDownRight className="size-4" />
+                Arrange a private introduction{' '}
+                <ArrowDownRight className="size-4" />
               </a>
             </div>
           </div>
@@ -177,7 +169,9 @@ export default function Home() {
                     <h3 className="mt-6 max-w-[15rem] font-serif text-[1.75rem] leading-[0.98] tracking-[-0.045em] text-white">
                       {standard.title}
                     </h3>
-                    <p className="mt-3 max-w-[16rem] text-sm leading-5 text-white/63">{standard.text}</p>
+                    <p className="mt-3 max-w-[16rem] text-sm leading-5 text-white/63">
+                      {standard.text}
+                    </p>
                   </div>
                 </article>
               ))}
@@ -190,19 +184,20 @@ export default function Home() {
         <div className="mx-auto max-w-[1340px] px-6 sm:px-10 lg:px-14">
           <div className="flex flex-col justify-between gap-8 border-b border-[#bcb3a4] pb-12 md:flex-row md:items-end">
             <div>
-              <p className="eyebrow">One accountable picture.</p>
+              <p className="eyebrow">A simple picture, first.</p>
               <h2 className="mt-5 max-w-2xl font-serif text-4xl leading-[1.03] tracking-[-0.04em] sm:text-5xl">
-                See the systems that matter before they become a problem.
+                What you paid. What you received. What needs a look.
               </h2>
             </div>
             <p className="max-w-sm text-[15px] leading-6 text-[#54636d]">
-              Oriel brings the systems that run a substantial home into one managed service. We
-              begin with how the property is actually used, connect what already works, and make
-              the critical things visible, reliable and simple to act on.
+              Oriel does not begin as a surveillance wall or a complicated
+              estate console. We start with electricity and water, show the
+              value of supporting care, and make exceptions clear enough to act
+              on.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2">
+          <div className="grid md:grid-cols-3">
             {systems.map(({ icon: Icon, title, text }, index) => (
               <article
                 key={title}
@@ -212,8 +207,12 @@ export default function Home() {
                   0{index + 1}
                 </span>
                 <Icon className="size-6 text-[#8f7040]" strokeWidth={1.5} />
-                <h3 className="mt-8 text-2xl font-medium tracking-[-0.025em]">{title}</h3>
-                <p className="mt-3 max-w-md text-[15px] leading-6 text-[#50606a]">{text}</p>
+                <h3 className="mt-8 text-2xl font-medium tracking-[-0.025em]">
+                  {title}
+                </h3>
+                <p className="mt-3 max-w-md text-[15px] leading-6 text-[#50606a]">
+                  {text}
+                </p>
               </article>
             ))}
           </div>
@@ -234,25 +233,25 @@ export default function Home() {
                 'Assessment',
                 '1 day',
                 '£1,000',
-                'We assess the home, its systems, fuel and energy use, and the opportunities worth addressing.',
+                'We map the bills, existing equipment and daily patterns, then agree the small set of costs worth making visible first.',
               ],
               [
                 'Planning & refining',
                 '1–2 days',
                 '£1,000',
-                'We build and refine a practical plan around your priorities and how you want the home to operate.',
+                'We define what “paid”, “received”, “normal” and “needs a look” should mean for your home before any wider rollout.',
               ],
               [
                 'Deployment',
                 '2 weeks maximum',
                 'Up to £25k',
-                'We install, connect and test the agreed systems with minimal disruption. You receive the Oriel app to see and control your property from anywhere.',
+                'We connect the agreed electricity and water signals with minimal disruption. Your Oriel app turns them into one calm, practical view.',
               ],
               [
                 'Ongoing operations',
                 'Continuous',
                 '£1,000 / year',
-                'We continue to monitor, optimise, maintain and support the home as its needs evolve.',
+                'We review exceptions, keep useful systems working and expand the picture only when the first stage is earning trust.',
               ],
             ].map(([title, duration, price, text], index) => (
               <li
@@ -274,7 +273,9 @@ export default function Home() {
                       </span>
                     </div>
                   </div>
-                  <p className="mt-2 max-w-xl text-[15px] leading-6 text-white/65">{text}</p>
+                  <p className="mt-2 max-w-xl text-[15px] leading-6 text-white/65">
+                    {text}
+                  </p>
                 </div>
               </li>
             ))}
@@ -288,29 +289,37 @@ export default function Home() {
         <div className="relative mx-auto max-w-[1340px] px-6 sm:px-10 lg:px-14">
           <div className="grid gap-12 lg:grid-cols-[0.78fr_1.22fr] lg:items-end">
             <div>
-              <p className="eyebrow">Illustrative use case</p>
+              <p className="eyebrow">The first home view</p>
               <h2 className="mt-5 max-w-xl font-serif text-4xl leading-[1.03] tracking-[-0.04em] sm:text-5xl">
-                £31,400 less in annual controllable spend.
+                A calmer monthly picture of a London home.
               </h2>
               <p className="mt-6 max-w-lg text-[17px] leading-7 text-[#52626c]">
-                In this first-year scenario, Timothy&apos;s substantial London home moves from
-                reactive oversight to measured operations—enough to cover a £28,000 first-year
-                Oriel plan and leave the owner ahead.
+                The first Oriel view does not overwhelm the owner with raw kWh,
+                litres or surveillance feeds. It shows what was paid, what was
+                put to use or protected, and the two exceptions worth reviewing.
               </p>
               <div className="mt-9 grid max-w-lg grid-cols-2 border-y border-[#bcb3a4]">
                 <div className="py-5 pr-5">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8f7040]">
-                    Before Oriel
+                    Paid · this month
                   </p>
-                  <p className="mt-2 font-serif text-3xl tracking-[-0.04em] text-[#1b3040]">£65,400</p>
-                  <p className="mt-1 text-xs text-[#61717a]">Annual controllable spend</p>
+                  <p className="mt-2 font-serif text-3xl tracking-[-0.04em] text-[#1b3040]">
+                    £1,420
+                  </p>
+                  <p className="mt-1 text-xs text-[#61717a]">
+                    Electricity, water and supporting care
+                  </p>
                 </div>
                 <div className="border-l border-[#bcb3a4] py-5 pl-5">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8f7040]">
-                    After Oriel
+                    Received / protected
                   </p>
-                  <p className="mt-2 font-serif text-3xl tracking-[-0.04em] text-[#1b3040]">£34,000</p>
-                  <p className="mt-1 text-xs text-[#61717a]">First 12 months</p>
+                  <p className="mt-2 font-serif text-3xl tracking-[-0.04em] text-[#1b3040]">
+                    £1.33
+                  </p>
+                  <p className="mt-1 text-xs text-[#61717a]">
+                    For every £1 paid
+                  </p>
                 </div>
               </div>
             </div>
@@ -319,16 +328,18 @@ export default function Home() {
               <div className="flex flex-col justify-between gap-5 border-b border-[#d5ccbe] bg-[#f0eadf] px-6 py-6 sm:flex-row sm:items-end sm:px-8">
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8f7040]">
-                    Annual operating costs
+                    Paid → received
                   </p>
                   <h3 className="mt-2 font-serif text-3xl tracking-[-0.04em] text-[#153044]">
-                    Before / after Oriel
+                    What the owner sees first
                   </h3>
                 </div>
                 <div className="border-l-2 border-[#a98043] pl-4">
-                  <p className="font-serif text-3xl leading-none tracking-[-0.04em] text-[#153044]">48%</p>
+                  <p className="font-serif text-3xl leading-none tracking-[-0.04em] text-[#153044]">
+                    2
+                  </p>
                   <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7d683e]">
-                    lower spend
+                    small exceptions
                   </p>
                 </div>
               </div>
@@ -337,32 +348,53 @@ export default function Home() {
                   <thead className="text-[10px] font-semibold uppercase tracking-[0.13em] text-[#7b817d]">
                     <tr className="border-b border-[#ded6c9]">
                       <th className="px-6 py-4 font-semibold sm:px-8">Area</th>
-                      <th className="px-4 py-4 font-semibold">Before</th>
-                      <th className="px-4 py-4 font-semibold">After</th>
-                      <th className="px-6 py-4 text-right font-semibold sm:px-8">Saved</th>
+                      <th className="px-4 py-4 font-semibold">Paid</th>
+                      <th className="px-4 py-4 font-semibold">Received</th>
+                      <th className="px-6 py-4 text-right font-semibold sm:px-8">
+                        Needs a look
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {timothySavings.map((item) => (
-                      <tr key={item.category} className="border-b border-[#e5ded2] last:border-0">
+                    {pilotValue.map((item) => (
+                      <tr
+                        key={item.category}
+                        className="border-b border-[#e5ded2] last:border-0"
+                      >
                         <td className="px-6 py-4 sm:px-8">
-                          <p className="text-sm font-medium text-[#243a48]">{item.category}</p>
-                          <p className="mt-1 text-xs text-[#74808a]">{item.action}</p>
+                          <p className="text-sm font-medium text-[#243a48]">
+                            {item.category}
+                          </p>
+                          <p className="mt-1 text-xs text-[#74808a]">
+                            {item.action}
+                          </p>
                         </td>
-                        <td className="px-4 py-4 text-sm text-[#596a73]">{item.before}</td>
-                        <td className="px-4 py-4 text-sm text-[#596a73]">{item.after}</td>
+                        <td className="px-4 py-4 text-sm text-[#596a73]">
+                          {item.paid}
+                        </td>
+                        <td className="px-4 py-4 text-sm text-[#596a73]">
+                          {item.received}
+                        </td>
                         <td className="px-6 py-4 text-right text-sm font-semibold text-[#886630] sm:px-8">
-                          {item.saved}
+                          {item.exception}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot className="bg-[#f0eadf] text-[#173246]">
                     <tr>
-                      <td className="px-6 py-4 text-sm font-semibold sm:px-8">Total</td>
-                      <td className="px-4 py-4 text-sm font-semibold">£65,400</td>
-                      <td className="px-4 py-4 text-sm font-semibold">£34,000</td>
-                      <td className="px-6 py-4 text-right text-sm font-bold text-[#7d5b27] sm:px-8">£31,400</td>
+                      <td className="px-6 py-4 text-sm font-semibold sm:px-8">
+                        Total
+                      </td>
+                      <td className="px-4 py-4 text-sm font-semibold">
+                        £1,420
+                      </td>
+                      <td className="px-4 py-4 text-sm font-semibold">
+                        £1,890 protected / put to use
+                      </td>
+                      <td className="px-6 py-4 text-right text-sm font-bold text-[#7d5b27] sm:px-8">
+                        £1.33 per £1 paid
+                      </td>
                     </tr>
                   </tfoot>
                 </table>
@@ -380,8 +412,9 @@ export default function Home() {
               Begin with the house you already have.
             </h2>
             <p className="mt-6 max-w-md text-[17px] leading-7 text-[#52626c]">
-              Tell us a little about the property. We will arrange a discreet conversation about
-              the systems, risks and opportunities that matter most.
+              Tell us a little about the property. We will arrange a discreet
+              conversation about the systems, risks and opportunities that
+              matter most.
             </p>
           </div>
           <form
@@ -393,11 +426,16 @@ export default function Home() {
           >
             {submitted ? (
               <div className="flex min-h-56 flex-col justify-center">
-                <LockKeyhole className="size-7 text-[#8f7040]" strokeWidth={1.5} />
-                <h3 className="mt-6 text-2xl font-medium tracking-[-0.03em]">Thank you.</h3>
+                <LockKeyhole
+                  className="size-7 text-[#8f7040]"
+                  strokeWidth={1.5}
+                />
+                <h3 className="mt-6 text-2xl font-medium tracking-[-0.03em]">
+                  Thank you.
+                </h3>
                 <p className="mt-3 max-w-sm text-[15px] leading-6 text-[#596871]">
-                  Your request is ready for the Oriel team. We will be in touch to arrange a
-                  private introduction.
+                  Your request is ready for the Oriel team. We will be in touch
+                  to arrange a private introduction.
                 </p>
                 <button
                   className="mt-7 w-fit text-sm font-semibold text-[#815f2c] underline decoration-[#c3a574] underline-offset-4"
@@ -412,7 +450,11 @@ export default function Home() {
                 <div className="grid gap-5 sm:grid-cols-2">
                   <label className="form-label">
                     Name
-                    <Input required className="form-input" placeholder="Your name" />
+                    <Input
+                      required
+                      className="form-input"
+                      placeholder="Your name"
+                    />
                   </label>
                   <label className="form-label">
                     Email
@@ -426,23 +468,28 @@ export default function Home() {
                 </div>
                 <label className="form-label mt-5 block">
                   Property or area
-                  <Input className="form-input" placeholder="For example: Hampstead, SW10, Surrey" />
+                  <Input
+                    className="form-input"
+                    placeholder="For example: Hampstead, SW10, Surrey"
+                  />
                 </label>
                 <label className="form-label mt-5 block">
                   What would you like to improve?
                   <textarea
                     className="form-input min-h-28 resize-y py-3"
-                    placeholder="Energy, security, water protection, maintenance, existing systems…"
+                    placeholder="Electricity, water, supporting care, maintenance, existing systems…"
                   />
                 </label>
                 <Button
                   className="mt-7 h-12 w-full rounded-full bg-[#173850] text-[15px] hover:bg-[#0d283b]"
                   type="submit"
                 >
-                  Request a private introduction <ArrowUpRight className="size-4" />
+                  Request a private introduction{' '}
+                  <ArrowUpRight className="size-4" />
                 </Button>
                 <p className="mt-4 text-center text-xs leading-5 text-[#78848a]">
-                  No sales pressure. Your details are used only to arrange this conversation.
+                  No sales pressure. Your details are used only to arrange this
+                  conversation.
                 </p>
               </>
             )}
@@ -459,6 +506,12 @@ export default function Home() {
             <span className="font-semibold tracking-[0.2em]">ORIEL</span>
           </div>
           <p>Private home operations for complex London estates.</p>
+          <AppLink
+            href="/app"
+            className="text-[11px] tracking-[0.08em] text-white/35 transition hover:text-white/60"
+          >
+            Product demo
+          </AppLink>
         </div>
       </footer>
     </main>
