@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Cormorant_Garamond, Geist, Geist_Mono } from 'next/font/google';
+import { Cormorant_Garamond, Geist, Geist_Mono, Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 
 const geistSans = Geist({
@@ -18,6 +18,13 @@ const cormorant = Cormorant_Garamond({
   weight: ['400', '500', '600'],
 });
 
+/** Geometric neo-grotesk — Revolut-like product UI. */
+const jakarta = Plus_Jakarta_Sans({
+  variable: '--font-revolut',
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+});
+
 export const metadata: Metadata = {
   title: 'Oriel — Private home operations',
   description:
@@ -32,7 +39,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${cormorant.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${cormorant.variable} ${jakarta.variable} antialiased`}
       >
         {children}
       </body>

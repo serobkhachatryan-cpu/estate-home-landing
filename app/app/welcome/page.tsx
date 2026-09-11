@@ -84,7 +84,7 @@ export default function WelcomePage() {
           <span className="text-sm font-semibold tracking-[0.22em]">ORIEL</span>
         </AppLink>
         <p className="mt-8 eyebrow">Welcome · Timur</p>
-        <h1 className="mt-4 font-serif text-4xl tracking-[-0.04em] text-[#153044]">
+        <h1 className="mt-4 text-4xl font-semibold tracking-[-0.05em] text-[#153044]">
           Start with your home.
         </h1>
         <p className="mt-4 text-[15px] leading-6 text-[#52626c]">
@@ -112,7 +112,7 @@ export default function WelcomePage() {
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8f7040]">
           Step {step + 1} of 3
         </p>
-        <h2 className="mt-3 font-serif text-3xl tracking-[-0.03em] text-[#153044]">
+        <h2 className="mt-3 text-3xl font-semibold tracking-[-0.045em] text-[#153044]">
           {current.title}
         </h2>
         <p className="mt-3 text-sm leading-6 text-[#52626c]">{current.text}</p>

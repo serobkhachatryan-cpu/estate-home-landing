@@ -15,34 +15,36 @@ export const productStages: ProductStage[] = [
   {
     id: 'stage-1',
     when: 'now',
-    title: 'Stage 1 — Timur’s home, electricity & water',
+    title: 'Stage 1 — Spend tree for Timur’s home',
     summary:
-      'One real home. Prove spend → benefit for electricity and water. Simple home screen: categories, all-normal, exceptions only.',
+      'Plan · Fact · Forecast at the top. Parameters across the house. Utilities opened into subparameters. Cash flow beside the ledger.',
     items: [
-      'Pilot property = Timur’s home (not a marketing estate story)',
-      'Core question: what did I pay, and what useful outcome did I get?',
-      'Priority utilities: electricity and water only',
-      'Home screen: category cards + status + exceptions; detail on drill-in',
-      'Supporting work and wear shown only as context for those utilities',
-      'No cameras, no people-tracking, no surveillance wall',
+      'Pilot property = Timur’s home',
+      'Headline: Plan £430k · Fact £475k · Forecast £455k (illustrative)',
+      'Parameters: occupancy, staff, utilities, transportation, renovation, inventory (policies inside), insurance, livestock (garden inside)',
+      'Utilities → energy uses a Revolut-style weekly tape: 52w plan/fact back, 52w forecast/cashflow forward',
+      'Utilities subs: energy, fuel, water, security, safety, back-ups, telecomm, AC, fountain',
+      'Cash flow total with period draws (1 / 2 / 3)',
+      'Paid → received kept as a supporting lens on energy and water',
+      'No surveillance wall — security may appear as a cost line only',
     ],
     openQuestions: [
-      'Exact dashboard layout — Timur to sketch',
-      'How we measure “natural wear” in plain language',
-      'How we price the value of supporting work',
+      'Confirm which parameters need real sub-trees next',
+      'How Plan is set and who owns Forecast revisions',
+      'How cash-flow periods map to Timur’s calendar',
     ],
   },
   {
     id: 'stage-2',
     when: 'next',
-    title: 'Stage 2 — Wear, care value, investment results',
+    title: 'Stage 2 — Drivers, wear, investment results',
     summary:
-      'Once electricity/water ratios feel right, deepen house-condition and capital-return language.',
+      'Once the spend tree feels right, deepen why Fact moved and what capital returned.',
     items: [
-      'Methodology for natural wear (fabric, plant, age)',
-      'Value of supporting / planned work vs reactive spend',
+      'Plain-English drivers behind over/under plan',
+      'Methodology for natural wear',
+      'Value of supporting / planned work',
       'Results of investments / upgrades over time',
-      'Stronger period comparisons Timur can trust',
     ],
     openQuestions: [
       'Agree metrics with Timur before building more UI',
@@ -54,23 +56,23 @@ export const productStages: ProductStage[] = [
     when: 'later',
     title: 'Stage 3 — Later ideas (explicitly deferred)',
     summary:
-      'Timur called these non-urgent. Keep them out of the first product.',
+      'Keep these out of the first product until the spend tree is trusted.',
     items: [
       'Video surveillance',
       'Tracking people’s movement in the house',
-      'Full multi-system “estate console” (security, perimeter, network wall)',
-      'Marketing landing / competitor research as the main push',
+      'Full multi-system “estate console”',
+      'Marketing landing as the main push',
     ],
   },
 ];
 
 export const discussionStatus = {
   prototypeNote:
-    'First prototype was only a distant match. This build is a Stage 1 working sketch — not a final agreed UI.',
+    'This iteration follows Timur’s handwritten Plan / Fact / Forecast spend tree — still a working sketch, not a final UI.',
   waitingOn:
-    'Timur to draw his preferred dashboard, then continue the discussion.',
+    'Confirm parameter list and which subtrees need live numbers next.',
   yourHomework:
-    'Stage the vision: now / next / later — done in this Stages screen.',
+    'Stage the vision: now / next / later — updated after the spend sketch.',
   sashaNote:
     'Task capture/help for Timur discussed; detailed assignment plan not yet written.',
 } as const;

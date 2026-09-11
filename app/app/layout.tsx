@@ -11,7 +11,9 @@ export default function ProductAppLayout({
 }) {
   return (
     <AppStateProvider>
-      <AppShell>{children}</AppShell>
+      <div className="oriel-app">
+        <AppShell>{children}</AppShell>
+      </div>
     </AppStateProvider>
   );
 }

@@ -1,27 +1,34 @@
 'use client';
 
-import { AppLink } from '@/components/app/app-link';
 import { PageHeader } from '@/components/app/app-shell';
-import { ValueRatioBoard } from '@/components/app/value-ratio-board';
+import { SpendParameterStrip } from '@/components/app/spend-parameter-strip';
+import { SpendWeeklyTape } from '@/components/app/spend-weekly-tape';
+import {
+  spendHeadline,
+  spendParameters,
+} from '@/lib/fixtures/spend-tree';
 
 export default function SpendingPage() {
   return (
     <div>
-      <PageHeader
-        eyebrow="Spending"
-        title="Spend only matters with benefit."
-        description="This route keeps the old name for continuity. The Stage 1 view is Paid → received for electricity and water."
+      <PageHeader title="Spend" />
+
+      <SpendWeeklyTape
+        subject={{
+          id: 'headline-total',
+          name: 'Home',
+          plan: spendHeadline.plan,
+          fact: spendHeadline.fact,
+          forecast: spendHeadline.forecast,
+        }}
       />
-      <ValueRatioBoard />
-      <p className="mt-6 text-sm text-[#6b777f]">
-        Prefer the product name?{' '}
-        <AppLink
-          href="/app/value"
-          className="font-medium text-[#815f2c] underline"
-        >
-          Open Paid → received
-        </AppLink>
-      </p>
+
+      <section className="mt-5">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f7040]">
+          Parameters
+        </p>
+        <SpendParameterStrip parameters={spendParameters} />
+      </section>
     </div>
   );
 }

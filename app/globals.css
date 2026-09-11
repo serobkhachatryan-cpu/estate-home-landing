@@ -33,6 +33,29 @@
   font-family: var(--font-geist-serif), 'Times New Roman', serif;
 }
 
+/**
+ * Product app typography — geometric sans a la Revolut.
+ * Big amounts use the same family (no editorial serif).
+ */
+.oriel-app {
+  font-family: var(--font-revolut), var(--font-geist-sans), system-ui, sans-serif;
+  font-feature-settings: 'ss01' on, 'cv11' on;
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+}
+
+.oriel-app .font-serif {
+  font-family: var(--font-revolut), var(--font-geist-sans), system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  font-feature-settings: 'tnum' 1, 'ss01' on;
+}
+
+.oriel-app .tabular-nums {
+  font-feature-settings: 'tnum' 1, 'lnum' 1, 'ss01' on;
+  font-variant-numeric: tabular-nums;
+}
+
 :root {
   --background: #f5f1e9;
   --foreground: #102030;

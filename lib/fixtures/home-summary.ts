@@ -32,11 +32,11 @@ export type PeriodTotals = {
 
 export const periodTotals: PeriodTotals = {
   periodLabel: 'This month',
-  spent: '£1,420',
-  benefitReturned: '£1,890 protected / put to use',
-  ratio: '£1.33',
+  spent: '£2,540',
+  benefitReturned: '£3,120 protected / put to use',
+  ratio: '£1.23',
   ratioPlain:
-    'For every £1 spent, about £1.33 came back as useful outcome or avoided waste',
+    'For every £1 spent, about £1.23 came back as useful outcome or avoided waste',
 };
 
 /**
@@ -50,12 +50,12 @@ export const homeCategories: HomeCategory[] = [
     name: 'Electricity',
     status: 'exception',
     statusLabel: 'Needs a look',
-    spent: '£980',
+    spent: '£1,970',
     benefit:
       'Light, plant and appliances on schedule · less idle overnight waste',
     benefitKind: 'Useful power',
     plainSummary:
-      'Most spend is doing useful work. Overnight standby is a little high.',
+      'Most of ~£2k this month is useful work. Overnight standby is a little high.',
     href: '/app/electricity',
     priority: 'now',
   },
@@ -64,11 +64,11 @@ export const homeCategories: HomeCategory[] = [
     name: 'Water',
     status: 'exception',
     statusLabel: 'Needs a look',
-    spent: '£90',
+    spent: '£220',
     benefit: 'Normal household use · one brief overnight rise caught early',
     benefitKind: 'Use + loss avoided',
     plainSummary:
-      'Use looks normal. One overnight rise is the exception to review.',
+      'Use looks normal at ~£220 / month. One overnight rise to review.',
     href: '/app/water',
     priority: 'now',
   },

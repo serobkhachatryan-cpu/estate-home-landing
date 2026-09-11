@@ -52,18 +52,18 @@ export const glanceMetrics: GlanceMetric[] = [
   {
     id: 'spend',
     label: 'Operating spend',
-    value: '£2,840',
-    comparison: '£210 below last month at this point',
+    value: '£3,575',
+    comparison: '£180 above last month at this point',
     explanation:
-      'Month-to-date controllable costs across electricity, heating fuel, water and planned maintenance.',
+      'Month-to-date controllable slice: electricity, heating fuel, water and planned maintenance (~£38k / month whole-home opex).',
   },
   {
     id: 'energy',
     label: 'Energy use',
-    value: '412 kWh',
-    comparison: '8% quieter than the same week last year',
+    value: '1,650 kWh',
+    comparison: '4% above the same week last year',
     explanation:
-      'Whole-home electricity for the last seven days, including standby loads Oriel is watching.',
+      'Whole-home electricity for the last seven days (~£455), including standby loads Oriel is watching.',
   },
   {
     id: 'fuel',

@@ -26,15 +26,15 @@ export const electricityDetail: UtilityDetail = {
   name: 'Electricity',
   statusLabel: 'Needs a look',
   status: 'exception',
-  spent: '£980 this month',
+  spent: '£1,970 this month',
   benefit: 'Most of that bought useful work in the house',
   plainStory:
-    'Consumption alone is not the point. The question is: what ran, was it needed, and did the pounds buy useful outcome or idle waste?',
+    'For a large London house, ~£22–24k / year for electricity is in range. The question is: what ran, was it needed, and did the pounds buy useful outcome or idle waste?',
   readings: [
     {
       label: 'Spend',
-      value: '£980',
-      context: 'Month to date · controllable',
+      value: '£1,970',
+      context: 'This month · ~£455 / week pace',
     },
     {
       label: 'Useful share',
@@ -50,7 +50,7 @@ export const electricityDetail: UtilityDetail = {
   exception: {
     title: 'Overnight standby a little high',
     detail:
-      'Baseload after midnight is above the quiet band for this home. Repeated every night, that is money without a clear job.',
+      'Baseload after midnight is above the quiet band for this home (~£40–60 / month if it repeats). Money without a clear job.',
     nextStep:
       'Confirm which circuits must stay on. No live toggles in this prototype — decision only.',
   },
@@ -63,15 +63,15 @@ export const waterDetail: UtilityDetail = {
   name: 'Water',
   statusLabel: 'Needs a look',
   status: 'exception',
-  spent: '£90 this month',
+  spent: '£220 this month',
   benefit: 'Household use looks intentional · one overnight rise flagged',
   plainStory:
-    'Litres matter only as useful use versus loss. The job of this screen is to show whether the bill bought normal living — or waste and risk.',
+    'Supply + wastewater for a large London house with garden use sits near ~£2.4–2.7k / year. Litres matter as useful use versus loss.',
   readings: [
     {
       label: 'Spend',
-      value: '£90',
-      context: 'Month to date',
+      value: '£220',
+      context: 'This month · on a ~£2.6k / year pace',
     },
     {
       label: 'Daytime use',
@@ -87,7 +87,7 @@ export const waterDetail: UtilityDetail = {
   exception: {
     title: 'Brief overnight flow rise',
     detail:
-      'Flow stepped up for a short window while the house was quiet. It settled. Still worth confirming so spend stays useful.',
+      'Flow stepped up for a short window while the house was quiet (~£15–25 if it was a slow leak start). It settled. Still worth confirming.',
     nextStep:
       'Mark as expected, or ask Oriel to keep watching that zone. Confirmation only in this prototype.',
   },

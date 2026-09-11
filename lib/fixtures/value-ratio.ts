@@ -20,9 +20,9 @@ export type ValueRatioSummary = {
 
 /** What Timur paid this period vs what that money returned. */
 export const valueRatioSummary: ValueRatioSummary = {
-  totalSpent: '£1,420',
-  totalBenefit: '£1,890 put to use / protected',
-  headlineRatio: '£1.33',
+  totalSpent: '£2,540',
+  totalBenefit: '£3,120 put to use / protected',
+  headlineRatio: '£1.23',
   period: 'This month',
 };
 
@@ -31,13 +31,13 @@ export const valueRatioBoard: ValueRatioItem[] = [
   {
     id: 'electricity',
     category: 'Electricity',
-    spent: '£980',
-    spentNote: 'Whole-home power this month',
+    spent: '£1,970',
+    spentNote: 'Whole-home power this month · ~£23.7k / year pace',
     benefit:
       'Useful work: lighting, plant, appliances on how the house is used',
     benefitKind: 'Useful power',
     ratioLabel: '£1 → £1.08 useful',
-    ratioDetail: '≈£80 of avoidable idle load still open to trim',
+    ratioDetail: '≈£50–60 / month of avoidable idle load still open to trim',
     explanation:
       'kWh only matter as: what ran, was it needed, and did the money buy useful outcome or waste.',
     stage: 'now',
@@ -45,8 +45,8 @@ export const valueRatioBoard: ValueRatioItem[] = [
   {
     id: 'water',
     category: 'Water',
-    spent: '£90',
-    spentNote: 'Supply this month',
+    spent: '£220',
+    spentNote: 'Supply + wastewater this month · ~£2.6k / year pace',
     benefit: 'Normal household use · early catch on overnight rise',
     benefitKind: 'Use + loss avoided',
     ratioLabel: '£1 → £5+ protected',
