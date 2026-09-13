@@ -3,6 +3,7 @@
 import { AppLink } from '@/components/app/app-link';
 import { useState } from 'react';
 import { PageHeader } from '@/components/app/app-shell';
+import { HomeAssistantUtilityStatus } from '@/components/app/home-assistant-utility-status';
 import { SpendWeeklyTape } from '@/components/app/spend-weekly-tape';
 import { Button } from '@/components/ui/button';
 import type { UtilityDetail } from '@/lib/fixtures/utilities';
@@ -24,6 +25,8 @@ export function UtilityDetailPage({ detail }: { detail: UtilityDetail }) {
       </AppLink>
 
       <PageHeader title={detail.name} />
+
+      <HomeAssistantUtilityStatus utility={detail.id} />
 
       <SpendWeeklyTape
         subject={{

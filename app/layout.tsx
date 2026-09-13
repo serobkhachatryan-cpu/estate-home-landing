@@ -1,5 +1,10 @@
 import type { Metadata } from 'next';
-import { Cormorant_Garamond, Geist, Geist_Mono, Plus_Jakarta_Sans } from 'next/font/google';
+import {
+  Cormorant_Garamond,
+  Geist,
+  Geist_Mono,
+  Plus_Jakarta_Sans,
+} from 'next/font/google';
 import './globals.css';
 
 const geistSans = Geist({
@@ -38,6 +43,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <link rel="redirect_uri" href="oriel://home-assistant/callback" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${cormorant.variable} ${jakarta.variable} antialiased`}
       >

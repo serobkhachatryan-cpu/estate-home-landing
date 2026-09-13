@@ -4,7 +4,6 @@ import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Settings, Wallet } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { AppLink } from '@/components/app/app-link';
-import { demoProperty, demoUser } from '@/lib/fixtures/property';
 import { cn } from '@/lib/utils';
 
 const tabs: {
@@ -27,16 +26,31 @@ const tabs: {
   { href: '/app/settings', label: 'Settings', icon: Settings },
 ];
 
-function isActive(
-  pathname: string,
-  item: (typeof tabs)[number],
-): boolean {
+function isActive(pathname: string, item: (typeof tabs)[number]): boolean {
   if (item.match) return item.match(pathname);
   if (item.exact) return pathname === item.href;
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+type WorkspaceViewer = {
+  displayName: string;
+  initials: string;
+};
+
+type WorkspaceProperty = {
+  name: string;
+  area: string;
+};
+
+export function AppShell({
+  children,
+  property,
+  viewer,
+}: {
+  children: ReactNode;
+  property: WorkspaceProperty | null;
+  viewer: WorkspaceViewer;
+}) {
   const pathname = usePathname();
   const hideChrome = pathname.startsWith('/app/welcome');
 
@@ -53,10 +67,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="flex items-center justify-between gap-3 px-4 py-3">
             <div className="min-w-0">
               <p className="truncate text-[13px] font-semibold tracking-[-0.01em] text-[#153044]">
-                {demoProperty.name}
+                {property?.name ?? 'Set up your first property'}
               </p>
               <p className="truncate text-[11px] text-[#6b777f]">
-                {demoProperty.area}
+                {property?.area ?? 'Oriel private workspace'}
               </p>
             </div>
             <AppLink
@@ -64,7 +78,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               className="flex size-8 items-center justify-center rounded-full bg-[#173850] text-[10px] font-semibold text-white"
               aria-label="Settings"
             >
-              {demoUser.initials}
+              {viewer.initials}
             </AppLink>
           </div>
         </header>
