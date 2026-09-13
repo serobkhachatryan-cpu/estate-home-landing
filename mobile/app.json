@@ -2,14 +2,15 @@
   "expo": {
     "name": "Oriel",
     "slug": "oriel-home-operations",
-    "version": "0.1.0",
+    "version": "1.0.0",
+    "description": "Private home operations with W3DS identity and Home Assistant utility readings.",
     "scheme": "oriel",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/oriel-app-icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.oriel.homeops",
+      "supportsTablet": false,
+      "bundleIdentifier": "com.serobkhachatryan.oriel",
       "buildNumber": "1"
     },
     "android": {
