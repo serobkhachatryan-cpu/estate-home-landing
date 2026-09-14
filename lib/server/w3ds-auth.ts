@@ -222,6 +222,7 @@ type AuthCompletion =
       state: 'complete';
       sessionToken: string;
       expiresAt: string;
+      returnTo: string;
       origin: string;
     };
 
@@ -232,6 +233,7 @@ type NativeAuthCompletion =
       state: 'complete';
       sessionToken: string;
       expiresAt: string;
+      returnTo: string;
     };
 
 async function claimCompletedW3dsOffer(
@@ -286,7 +288,12 @@ async function claimCompletedW3dsOffer(
     )
     .run();
 
-  return { state: 'complete', sessionToken, expiresAt };
+  return {
+    state: 'complete',
+    sessionToken,
+    expiresAt,
+    returnTo: offer.return_to,
+  };
 }
 
 export async function completeW3dsBrowserSignIn(
@@ -304,6 +311,7 @@ export async function completeW3dsBrowserSignIn(
     state: 'complete',
     sessionToken: result.sessionToken,
     expiresAt: result.expiresAt,
+    returnTo: result.returnTo,
     origin: configuredPublicOrigin(request),
   };
 }
