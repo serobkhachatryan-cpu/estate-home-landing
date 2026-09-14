@@ -192,6 +192,32 @@ async function fetchJson(url: string, init?: RequestInit) {
   return response.json() as Promise<unknown>;
 }
 
+function isIpv4Address(hostname: string) {
+  const octets = hostname.split('.');
+  return (
+    octets.length === 4 &&
+    octets.every(
+      (octet) =>
+        /^\d{1,3}$/.test(octet) &&
+        Number.parseInt(octet, 10) >= 0 &&
+        Number.parseInt(octet, 10) <= 255,
+    )
+  );
+}
+
+function workerFetchableEvaultUrl(evaultUri: string) {
+  const url = new URL('/whois', evaultUri);
+  if (isIpv4Address(url.hostname)) {
+    // Cloudflare Workers reject fetches whose URL host is a bare IP address.
+    // W3DS development eVaults can currently resolve to one, so give the
+    // Worker-safe request a DNS hostname that resolves only to that same
+    // public address. The response remains untrusted until its Registry JWT
+    // key-binding certificate and the wallet signature both verify below.
+    url.hostname = `${url.hostname.replaceAll('.', '-')}.sslip.io`;
+  }
+  return url;
+}
+
 /**
  * Verifies the W3DS auth protocol without trusting a client-provided key.
  * The eVault URL is resolved from the Registry for every login, and the
@@ -217,7 +243,7 @@ export async function verifyW3dsSessionSignature({
     }
 
     stage = 'evault_lookup';
-    const whoisUrl = new URL('/whois', resolved.uri);
+    const whoisUrl = workerFetchableEvaultUrl(resolved.uri);
     const whois = (await fetchJson(whoisUrl.toString(), {
       headers: { Accept: 'application/json', 'X-ENAME': eName },
     })) as { keyBindingCertificates?: unknown };
