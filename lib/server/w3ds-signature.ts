@@ -31,20 +31,74 @@ function decodeHex(value: string) {
   return bytes;
 }
 
-function decodeMultibase(value: string) {
+function decodePublicKey(value: string) {
   if (value.startsWith('z')) {
+    // The current eVault can prefix hexadecimal SPKI DER bytes with `z`.
+    // Prefer that legacy form when it is unambiguous, then fall back to the
+    // standard base58btc multibase representation.
+    if (/^[0-9a-f]+$/i.test(value.slice(1)) && value.length % 2 === 1) {
+      return decodeHex(value.slice(1));
+    }
+
     try {
       return base58btc.decode(value);
     } catch {
-      // Existing eVault certificates can label an SPKI DER key as `z` while
-      // carrying hexadecimal bytes. Accept that observed legacy form only
-      // when it is valid hexadecimal; all other malformed values still fail.
-      return decodeHex(value.slice(1));
+      throw new Error('Invalid base58 public key.');
     }
   }
   if (value.startsWith('m')) return decodeBase64(value.slice(1));
   if (value.startsWith('f')) return decodeHex(value.slice(1));
   return decodeBase64(value);
+}
+
+function signatureCandidates(value: string) {
+  const candidates: Uint8Array[] = [];
+  const add = (bytes: Uint8Array) => {
+    if (
+      !candidates.some(
+        (candidate) =>
+          candidate.length === bytes.length &&
+          candidate.every((byte, index) => byte === bytes[index]),
+      )
+    ) {
+      candidates.push(bytes);
+    }
+  };
+
+  // W3DS Wallet versions have emitted both ordinary base64 and multibase
+  // base58 signatures. A value starting with `z` can also be valid base64, so
+  // retain every valid decoding and let signature verification select it.
+  if (/^[A-Za-z0-9+/_-]+={0,2}$/.test(value)) {
+    try {
+      add(decodeBase64(value));
+    } catch {
+      // Try the other protocol encodings below.
+    }
+  }
+  if (value.startsWith('z')) {
+    try {
+      add(base58btc.decode(value));
+    } catch {
+      // A malformed base58 value is not accepted unless another encoding is.
+    }
+  }
+  if (value.startsWith('m')) {
+    try {
+      add(decodeBase64(value.slice(1)));
+    } catch {
+      // A malformed multibase value is not accepted unless another encoding is.
+    }
+  }
+  if (value.startsWith('f')) {
+    try {
+      add(decodeHex(value.slice(1)));
+    } catch {
+      // A malformed multibase value is not accepted unless another encoding is.
+    }
+  }
+
+  if (candidates.length === 0) throw new Error('Invalid signature encoding.');
+  return candidates.map(decodeDerSignature);
 }
 
 function cryptoBuffer(value: Uint8Array) {
@@ -130,6 +184,7 @@ export async function verifyW3dsSessionSignature({
   session,
   registryBaseUrl,
 }: VerifyW3dsSessionSignatureInput) {
+  let stage = 'registry resolution';
   try {
     const registryUrl = new URL(registryBaseUrl);
     const resolveUrl = new URL('/resolve', registryUrl);
@@ -138,34 +193,48 @@ export async function verifyW3dsSessionSignature({
     const resolved = (await fetchJson(resolveUrl.toString())) as {
       uri?: unknown;
     };
-    if (typeof resolved.uri !== 'string') return false;
+    if (typeof resolved.uri !== 'string') {
+      console.warn('[W3DS authentication] verification stopped at registry resolution.');
+      return false;
+    }
 
+    stage = 'eVault lookup';
     const whoisUrl = new URL('/whois', resolved.uri);
     const whois = (await fetchJson(whoisUrl.toString(), {
       headers: { Accept: 'application/json', 'X-ENAME': eName },
     })) as { keyBindingCertificates?: unknown };
     const certificates = whois.keyBindingCertificates;
-    if (!Array.isArray(certificates) || certificates.length === 0) return false;
+    if (!Array.isArray(certificates) || certificates.length === 0) {
+      console.warn('[W3DS authentication] verification stopped at eVault lookup.');
+      return false;
+    }
 
+    stage = 'registry certificates';
     const jwksUrl = new URL('/.well-known/jwks.json', registryUrl);
     const jwks = createLocalJWKSet(
       (await fetchJson(jwksUrl.toString())) as Parameters<
         typeof createLocalJWKSet
       >[0],
     );
-    const signatureBytes = decodeDerSignature(decodeMultibase(signature));
+    stage = 'signature decoding';
+    const signatures = signatureCandidates(signature);
     const sessionBytes = new TextEncoder().encode(session);
+    let certificateWasValid = false;
+    let keyWasImported = false;
 
     for (const certificate of certificates) {
       if (typeof certificate !== 'string') continue;
 
       try {
+        stage = 'certificate validation';
         const { payload } = await jwtVerify(certificate, jwks);
         if (payload.ename !== eName || typeof payload.publicKey !== 'string') {
           continue;
         }
+        certificateWasValid = true;
 
-        const publicKeyBytes = decodeMultibase(payload.publicKey);
+        stage = 'public key import';
+        const publicKeyBytes = decodePublicKey(payload.publicKey);
         const publicKey = await crypto.subtle.importKey(
           isRawP256PublicKey(publicKeyBytes) ? 'raw' : 'spki',
           publicKeyBytes,
@@ -173,19 +242,33 @@ export async function verifyW3dsSessionSignature({
           false,
           ['verify'],
         );
-        const valid = await crypto.subtle.verify(
-          { name: 'ECDSA', hash: 'SHA-256' },
-          publicKey,
-          cryptoBuffer(signatureBytes),
-          sessionBytes,
-        );
-        if (valid) return true;
+        keyWasImported = true;
+
+        stage = 'signature verification';
+        for (const signatureBytes of signatures) {
+          const valid = await crypto.subtle.verify(
+            { name: 'ECDSA', hash: 'SHA-256' },
+            publicKey,
+            cryptoBuffer(signatureBytes),
+            sessionBytes,
+          );
+          if (valid) return true;
+        }
       } catch {
         // A user can have multiple device certificates. Try the next one.
       }
     }
+
+    const finalStage = keyWasImported
+      ? 'signature verification'
+      : certificateWasValid
+        ? 'public key import'
+        : 'certificate validation';
+    console.warn(`[W3DS authentication] verification stopped at ${finalStage}.`);
   } catch {
-    // The callback always receives a generic invalid-signature result.
+    // Keep the user-facing response generic while leaving a non-sensitive
+    // stage marker in the server log for integration diagnostics.
+    console.warn(`[W3DS authentication] verification stopped at ${stage}.`);
   }
 
   return false;
