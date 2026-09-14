@@ -32,7 +32,16 @@ function decodeHex(value: string) {
 }
 
 function decodeMultibase(value: string) {
-  if (value.startsWith('z')) return base58btc.decode(value);
+  if (value.startsWith('z')) {
+    try {
+      return base58btc.decode(value);
+    } catch {
+      // Existing eVault certificates can label an SPKI DER key as `z` while
+      // carrying hexadecimal bytes. Accept that observed legacy form only
+      // when it is valid hexadecimal; all other malformed values still fail.
+      return decodeHex(value.slice(1));
+    }
+  }
   if (value.startsWith('m')) return decodeBase64(value.slice(1));
   if (value.startsWith('f')) return decodeHex(value.slice(1));
   return decodeBase64(value);
