@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import {
   Cormorant_Garamond,
   Geist,
@@ -34,6 +34,39 @@ export const metadata: Metadata = {
   title: 'Oriel — Private home operations',
   description:
     'Optimize your home’s spending with clear, accountable private home operations in London.',
+  applicationName: 'Oriel',
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [
+      {
+        url: '/icons/oriel-192.png',
+        sizes: '192x192',
+        type: 'image/png',
+      },
+      {
+        url: '/icons/oriel-512.png',
+        sizes: '512x512',
+        type: 'image/png',
+      },
+    ],
+    apple: [
+      {
+        url: '/apple-touch-icon.png',
+        sizes: '180x180',
+        type: 'image/png',
+      },
+    ],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Oriel',
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#102a3e',
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({

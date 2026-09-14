@@ -140,6 +140,11 @@ export default function Home() {
                 <ArrowDownRight className="size-4" />
               </a>
             </div>
+            <p className="mt-5 text-sm leading-6 text-white/65">
+              On iPhone, open Oriel in Safari, tap Share, then choose{' '}
+              <span className="font-medium text-white/90">Add to Home Screen</span>{' '}
+              for an app-like experience.
+            </p>
           </div>
         </div>
 
