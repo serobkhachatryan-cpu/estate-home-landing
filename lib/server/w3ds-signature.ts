@@ -8,6 +8,25 @@ type VerifyW3dsSessionSignatureInput = {
   registryBaseUrl: string;
 };
 
+export type W3dsVerificationFailure =
+  | 'registry_resolution'
+  | 'evault_lookup'
+  | 'registry_certificates'
+  | 'signature_decoding'
+  | 'certificate_validation'
+  | 'public_key_import'
+  | 'signature_verification';
+
+export type W3dsSignatureVerificationResult =
+  | { valid: true }
+  | { valid: false; failure: W3dsVerificationFailure };
+
+function verificationFailure(
+  failure: W3dsVerificationFailure,
+): W3dsSignatureVerificationResult {
+  return { valid: false, failure };
+}
+
 function decodeBase64(value: string) {
   if (!/^[A-Za-z0-9+/_-]*={0,2}$/.test(value)) {
     throw new Error('Invalid base64 value.');
@@ -184,7 +203,7 @@ export async function verifyW3dsSessionSignature({
   session,
   registryBaseUrl,
 }: VerifyW3dsSessionSignatureInput) {
-  let stage = 'registry resolution';
+  let stage: W3dsVerificationFailure = 'registry_resolution';
   try {
     const registryUrl = new URL(registryBaseUrl);
     const resolveUrl = new URL('/resolve', registryUrl);
@@ -194,29 +213,27 @@ export async function verifyW3dsSessionSignature({
       uri?: unknown;
     };
     if (typeof resolved.uri !== 'string') {
-      console.warn('[W3DS authentication] verification stopped at registry resolution.');
-      return false;
+      return verificationFailure(stage);
     }
 
-    stage = 'eVault lookup';
+    stage = 'evault_lookup';
     const whoisUrl = new URL('/whois', resolved.uri);
     const whois = (await fetchJson(whoisUrl.toString(), {
       headers: { Accept: 'application/json', 'X-ENAME': eName },
     })) as { keyBindingCertificates?: unknown };
     const certificates = whois.keyBindingCertificates;
     if (!Array.isArray(certificates) || certificates.length === 0) {
-      console.warn('[W3DS authentication] verification stopped at eVault lookup.');
-      return false;
+      return verificationFailure(stage);
     }
 
-    stage = 'registry certificates';
+    stage = 'registry_certificates';
     const jwksUrl = new URL('/.well-known/jwks.json', registryUrl);
     const jwks = createLocalJWKSet(
       (await fetchJson(jwksUrl.toString())) as Parameters<
         typeof createLocalJWKSet
       >[0],
     );
-    stage = 'signature decoding';
+    stage = 'signature_decoding';
     const signatures = signatureCandidates(signature);
     const sessionBytes = new TextEncoder().encode(session);
     let certificateWasValid = false;
@@ -226,14 +243,14 @@ export async function verifyW3dsSessionSignature({
       if (typeof certificate !== 'string') continue;
 
       try {
-        stage = 'certificate validation';
+        stage = 'certificate_validation';
         const { payload } = await jwtVerify(certificate, jwks);
         if (payload.ename !== eName || typeof payload.publicKey !== 'string') {
           continue;
         }
         certificateWasValid = true;
 
-        stage = 'public key import';
+        stage = 'public_key_import';
         const publicKeyBytes = decodePublicKey(payload.publicKey);
         const publicKey = await crypto.subtle.importKey(
           isRawP256PublicKey(publicKeyBytes) ? 'raw' : 'spki',
@@ -244,7 +261,7 @@ export async function verifyW3dsSessionSignature({
         );
         keyWasImported = true;
 
-        stage = 'signature verification';
+        stage = 'signature_verification';
         for (const signatureBytes of signatures) {
           const valid = await crypto.subtle.verify(
             { name: 'ECDSA', hash: 'SHA-256' },
@@ -252,24 +269,20 @@ export async function verifyW3dsSessionSignature({
             cryptoBuffer(signatureBytes),
             sessionBytes,
           );
-          if (valid) return true;
+          if (valid) return { valid: true };
         }
       } catch {
         // A user can have multiple device certificates. Try the next one.
       }
     }
 
-    const finalStage = keyWasImported
-      ? 'signature verification'
+    const finalStage: W3dsVerificationFailure = keyWasImported
+      ? 'signature_verification'
       : certificateWasValid
-        ? 'public key import'
-        : 'certificate validation';
-    console.warn(`[W3DS authentication] verification stopped at ${finalStage}.`);
+        ? 'public_key_import'
+        : 'certificate_validation';
+    return verificationFailure(finalStage);
   } catch {
-    // Keep the user-facing response generic while leaving a non-sensitive
-    // stage marker in the server log for integration diagnostics.
-    console.warn(`[W3DS authentication] verification stopped at ${stage}.`);
+    return verificationFailure(stage);
   }
-
-  return false;
 }

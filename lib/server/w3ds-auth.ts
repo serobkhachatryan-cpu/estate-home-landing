@@ -192,18 +192,30 @@ export async function receiveW3dsAuthCallback(input: unknown) {
     return { ok: false as const, status: 401 };
   }
 
-  const valid = await verifyW3dsSessionSignature({
+  const verification = await verifyW3dsSessionSignature({
     eName: w3id,
     signature,
     session,
     registryBaseUrl: registryBaseUrl(),
   });
-  if (!valid) return { ok: false as const, status: 401 };
+  if (!verification.valid) {
+    // This records only a fixed integration stage, never an eName, session,
+    // signature, certificate, or URL. It makes hosted-wallet failures
+    // diagnosable without weakening W3DS authentication.
+    await database()
+      .prepare(
+        `UPDATE w3ds_auth_offers SET failure_code = ?
+         WHERE session_id = ? AND completed_at IS NULL`,
+      )
+      .bind(verification.failure, session)
+      .run();
+    return { ok: false as const, status: 401 };
+  }
 
   const result = await database()
     .prepare(
       `UPDATE w3ds_auth_offers
-       SET completed_ename = ?, completed_at = ?
+       SET completed_ename = ?, completed_at = ?, failure_code = NULL
        WHERE session_id = ? AND completed_at IS NULL AND expires_at > ?`,
     )
     .bind(w3id, now, session, now)

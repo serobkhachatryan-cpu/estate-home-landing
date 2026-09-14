@@ -10,7 +10,7 @@ export function database() {
   return databaseBinding;
 }
 
-function isDuplicateAreaColumnError(error: unknown) {
+function isDuplicateColumnError(error: unknown) {
   return (
     error instanceof Error &&
     error.message.toLowerCase().includes('duplicate column name')
@@ -44,6 +44,7 @@ export async function ensureSchema() {
             completed_ename TEXT,
             completed_at TEXT,
             claimed_at TEXT,
+            failure_code TEXT,
             created_at TEXT NOT NULL
           )`,
         ),
@@ -144,7 +145,16 @@ export async function ensureSchema() {
             )
             .run();
         } catch (error) {
-          if (!isDuplicateAreaColumnError(error)) throw error;
+          if (!isDuplicateColumnError(error)) throw error;
+        }
+        try {
+          await db
+            .prepare(
+              'ALTER TABLE w3ds_auth_offers ADD COLUMN failure_code TEXT',
+            )
+            .run();
+        } catch (error) {
+          if (!isDuplicateColumnError(error)) throw error;
         }
         await db.prepare('PRAGMA optimize').run();
       })
