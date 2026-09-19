@@ -142,11 +142,72 @@ function SourceMetric({
   );
 }
 
+function SourceButton({
+  source,
+  selected,
+  onSelect,
+}: {
+  source: ImportedSensorSummary;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const primary = source.last7Days ?? source.latest;
+  const label =
+    source.aggregation === 'daily_total'
+      ? source.last7Days
+        ? 'Last 7d'
+        : 'Latest'
+      : source.last7Days
+        ? '7d avg'
+        : 'Latest';
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-label={`Select ${source.label}`}
+        aria-pressed={selected}
+        className={cn(
+          'flex w-full items-center justify-between gap-3 border-b border-[#eee8de] px-3 py-3 text-left last:border-0',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#a88348]/50',
+          selected ? 'bg-[#f7f1e0]' : 'bg-[#fcfbf8] hover:bg-[#faf7f1]',
+        )}
+      >
+        <span className="min-w-0">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-[13px] font-medium text-[#153044]">
+              {source.label}
+            </span>
+            {source.isArchived ? (
+              <span className="rounded-full bg-[#f0ebe3] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-[#5a6270]">
+                Archived
+              </span>
+            ) : null}
+          </span>
+          <span className="mt-0.5 block truncate text-[10px] text-[#6b777f]">
+            {sourceContext(source) || 'Historical source'}
+          </span>
+        </span>
+        <span className="shrink-0 text-right">
+          <span className="block text-[12px] font-semibold tabular-nums text-[#153044]">
+            {primary
+              ? formatNumber(primary.value, source.unit)
+              : formatNumber(0, source.unit)}
+          </span>
+          <span className="mt-0.5 block text-[9px] text-[#6b777f]">
+            {primary ? label : 'No complete record'}
+          </span>
+        </span>
+      </button>
+    </li>
+  );
+}
+
 /**
  * Keeps the original Oriel utility/system hierarchy while replacing fixture
- * values with imported recorder summaries. Native system and source controls
- * stay directly above the selected reading, so no separate inspect action or
- * scrolling through a source list is required.
+ * values with imported recorder summaries. Callers can choose whether a
+ * compact selector appears before the reading or expanded source groups below.
  */
 export function ImportedSensorBreakdown({
   groupId,
@@ -157,6 +218,7 @@ export function ImportedSensorBreakdown({
   accessToken,
   selectedEntityId: controlledEntityId,
   onSelectEntityId,
+  parameterPlacement = 'before-reading',
 }: {
   groupId: string;
   primaryEntityId?: string;
@@ -166,6 +228,7 @@ export function ImportedSensorBreakdown({
   accessToken?: string;
   selectedEntityId?: string;
   onSelectEntityId?: (entityId: string) => void;
+  parameterPlacement?: 'before-reading' | 'after-reading';
 }) {
   const [overview, setOverview] = useState<OverviewState>({ phase: 'loading' });
   const [localSelectedEntityId, setLocalSelectedEntityId] = useState<
@@ -273,6 +336,16 @@ export function ImportedSensorBreakdown({
     overview.phase === 'ready'
       ? overview.data.groups.find((group) => group.id === groupId)
       : null;
+  const selectSource = useCallback(
+    (entityId: string) => {
+      if (onSelectEntityId) {
+        onSelectEntityId(entityId);
+        return;
+      }
+      setLocalSelectedEntityId(entityId);
+    },
+    [onSelectEntityId],
+  );
 
   if (overview.phase === 'loading') {
     return (
@@ -315,57 +388,56 @@ export function ImportedSensorBreakdown({
 
   return (
     <section className={cn('space-y-4', className)}>
-      <div className="rounded-2xl border border-[#e0d8cb] bg-[#fcfbf8] px-4 py-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f7040]">
-          Parameter
-        </p>
-        <p className="mt-1 text-[12px] leading-5 text-[#52626c]">{note}</p>
-        <label
-          htmlFor={`recorded-parameter-${groupId}`}
-          className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b777f]"
-        >
-          Choose a recorded parameter
-        </label>
-        <select
-          id={`recorded-parameter-${groupId}`}
-          value={resolvedEntityId ?? ''}
-          onChange={(event) => {
-            if (onSelectEntityId) {
-              onSelectEntityId(event.target.value);
-              return;
-            }
-            setLocalSelectedEntityId(event.target.value);
-          }}
-          className="mt-1.5 h-11 w-full appearance-auto rounded-xl border border-[#d8cdbd] bg-white px-3 text-[14px] font-medium text-[#153044] outline-none transition focus:border-[#a88348] focus:ring-2 focus:ring-[#a88348]/20"
-        >
-          {grouped.map(([label, entries]) => (
-            <optgroup key={label} label={label}>
-              {entries.map((source) => (
-                <option key={source.entityId} value={source.entityId}>
-                  {source.label}
-                  {source.areaLabel ? ` · ${source.areaLabel}` : ''}
-                  {source.isArchived ? ' · Archived' : ''}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-        <p className="mt-2 text-[10px] leading-4 text-[#6b777f]">
-          {summaryGroup?.availableCount ?? 0} of{' '}
-          {summaryGroup?.sourceCount ?? sources.length} sources have at least
-          one complete daily record. The snapshot ends on 19 Sept 2026; this is
-          historical data, not a live reading.
-        </p>
-      </div>
+      {parameterPlacement === 'before-reading' ? (
+        <div className="rounded-2xl border border-[#e0d8cb] bg-[#fcfbf8] px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f7040]">
+            Parameter
+          </p>
+          <p className="mt-1 text-[12px] leading-5 text-[#52626c]">{note}</p>
+          <label
+            htmlFor={`recorded-parameter-${groupId}`}
+            className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b777f]"
+          >
+            Choose a recorded parameter
+          </label>
+          <select
+            id={`recorded-parameter-${groupId}`}
+            value={resolvedEntityId ?? ''}
+            onChange={(event) => selectSource(event.target.value)}
+            className="mt-1.5 h-11 w-full appearance-auto rounded-xl border border-[#d8cdbd] bg-white px-3 text-[14px] font-medium text-[#153044] outline-none transition focus:border-[#a88348] focus:ring-2 focus:ring-[#a88348]/20"
+          >
+            {grouped.map(([label, entries]) => (
+              <optgroup key={label} label={label}>
+                {entries.map((source) => (
+                  <option key={source.entityId} value={source.entityId}>
+                    {source.label}
+                    {source.areaLabel ? ` · ${source.areaLabel}` : ''}
+                    {source.isArchived ? ' · Archived' : ''}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <p className="mt-2 text-[10px] leading-4 text-[#6b777f]">
+            {summaryGroup?.availableCount ?? 0} of{' '}
+            {summaryGroup?.sourceCount ?? sources.length} sources have at least
+            one complete daily record. The snapshot ends on 19 Sept 2026; this
+            is historical data, not a live reading.
+          </p>
+        </div>
+      ) : null}
 
       {selected ? (
         <div className="space-y-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-1">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f7040]">
-                Selected source
+                Selected parameter
               </p>
-              <h2 className="mt-1 text-[17px] font-medium text-[#153044]">
+              <h2
+                aria-live="polite"
+                className="mt-1 text-[17px] font-medium text-[#153044]"
+              >
                 {selected.label}
               </h2>
               <p className="mt-0.5 text-[11px] text-[#6b777f]">
@@ -441,6 +513,51 @@ export function ImportedSensorBreakdown({
               Loading complete daily history…
             </div>
           )}
+        </div>
+      ) : null}
+
+      {parameterPlacement === 'after-reading' ? (
+        <div>
+          <div className="mb-2 px-1">
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f7040]">
+              Parameters · {sources.length}
+            </h2>
+            <p className="mt-1 text-[12px] leading-5 text-[#52626c]">{note}</p>
+            <p className="mt-1 text-[10px] leading-4 text-[#6b777f]">
+              {summaryGroup?.availableCount ?? 0} of{' '}
+              {summaryGroup?.sourceCount ?? sources.length} sources have at
+              least one complete daily record. The snapshot ends on 19 Sept
+              2026; this is historical data, not a live reading.
+            </p>
+          </div>
+          <div className="space-y-3">
+            {grouped.map(([label, entries]) => (
+              <section
+                key={label}
+                aria-label={`${label} parameters`}
+                className="overflow-hidden rounded-2xl border border-[#e0d8cb] bg-[#fcfbf8]"
+              >
+                <header className="flex items-center justify-between gap-3 border-b border-[#e0d8cb] px-3 py-3">
+                  <h3 className="min-w-0 truncate text-[13px] font-medium text-[#153044]">
+                    {label}
+                  </h3>
+                  <span className="shrink-0 text-[10px] text-[#6b777f]">
+                    {entries.length} parameter{entries.length === 1 ? '' : 's'}
+                  </span>
+                </header>
+                <ul>
+                  {entries.map((source) => (
+                    <SourceButton
+                      key={source.entityId}
+                      source={source}
+                      selected={source.entityId === resolvedEntityId}
+                      onSelect={() => selectSource(source.entityId)}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
         </div>
       ) : null}
     </section>

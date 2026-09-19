@@ -161,6 +161,7 @@ export function ImportedSystemsWorkspace({
         note={systemDescriptions[selected.id] ?? systemDescriptions.sensors}
         historyEndpoint={historyEndpoint}
         accessToken={accessToken}
+        parameterPlacement="after-reading"
         selectedEntityId={selectedSourceByGroup[selected.id]}
         onSelectEntityId={(entityId) =>
           setSelectedSourceByGroup((current) => ({
