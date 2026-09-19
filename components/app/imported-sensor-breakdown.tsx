@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   MeasuredWeeklyTape,
@@ -62,12 +62,15 @@ function sourceContext(source: ImportedSensorSummary) {
 function groupedSources(sources: ImportedSensorSummary[]) {
   const groups = new Map<string, ImportedSensorSummary[]>();
   for (const source of sources) {
-    const label = source.deviceLabel ?? source.areaLabel ?? 'Independent sources';
+    const label =
+      source.deviceLabel ?? source.areaLabel ?? 'Independent sources';
     const current = groups.get(label) ?? [];
     current.push(source);
     groups.set(label, current);
   }
-  return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
+  return [...groups.entries()].sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
 }
 
 function isOverview(value: unknown): value is SensorHistoryOverviewResponse {
@@ -139,71 +142,11 @@ function SourceMetric({
   );
 }
 
-function SourceButton({
-  source,
-  selected,
-  onSelect,
-}: {
-  source: ImportedSensorSummary;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const period = source.last7Days;
-  const latest = source.latest;
-  const primary = period ?? latest;
-  const prefix =
-    source.aggregation === 'daily_total'
-      ? period
-        ? 'Last 7d'
-        : 'Latest'
-      : period
-        ? '7d avg'
-        : 'Latest';
-
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onSelect}
-        aria-label={`Select ${source.label}`}
-        className={cn(
-          'flex w-full items-center justify-between gap-3 border-b border-[#eee8de] px-3 py-3 text-left last:border-0',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a88348]/50',
-          selected ? 'bg-[#f7f1e0]' : 'bg-[#fcfbf8] hover:bg-[#faf7f1]',
-        )}
-      >
-        <span className="min-w-0">
-          <span className="flex items-center gap-1.5">
-            <span className="truncate text-[13px] font-medium text-[#153044]">
-              {source.label}
-            </span>
-            {source.isArchived ? (
-              <span className="rounded-full bg-[#f0ebe3] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-[#5a6270]">
-                Archived
-              </span>
-            ) : null}
-          </span>
-          <span className="mt-0.5 block truncate text-[10px] text-[#6b777f]">
-            {sourceContext(source) || 'Historical source'}
-          </span>
-        </span>
-        <span className="shrink-0 text-right">
-          <span className="block text-[12px] font-semibold tabular-nums text-[#153044]">
-            {primary ? formatNumber(primary.value, source.unit) : formatNumber(0, source.unit)}
-          </span>
-          <span className="mt-0.5 block text-[9px] text-[#6b777f]">
-            {primary ? prefix : 'No complete record'}
-          </span>
-        </span>
-      </button>
-    </li>
-  );
-}
-
 /**
  * Keeps the original Oriel utility/system hierarchy while replacing fixture
- * values with the imported recorder summaries. One source is selected at a
- * time; source totals, phases and branches are never combined by this UI.
+ * values with imported recorder summaries. Native system and source controls
+ * stay directly above the selected reading, so no separate inspect action or
+ * scrolling through a source list is required.
  */
 export function ImportedSensorBreakdown({
   groupId,
@@ -212,6 +155,8 @@ export function ImportedSensorBreakdown({
   className,
   historyEndpoint = '/api/sensor-history',
   accessToken,
+  selectedEntityId: controlledEntityId,
+  onSelectEntityId,
 }: {
   groupId: string;
   primaryEntityId?: string;
@@ -219,9 +164,13 @@ export function ImportedSensorBreakdown({
   className?: string;
   historyEndpoint?: string;
   accessToken?: string;
+  selectedEntityId?: string;
+  onSelectEntityId?: (entityId: string) => void;
 }) {
   const [overview, setOverview] = useState<OverviewState>({ phase: 'loading' });
-  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const [localSelectedEntityId, setLocalSelectedEntityId] = useState<
+    string | null
+  >(null);
   const [history, setHistory] = useState<SourceState>({ phase: 'idle' });
 
   const loadOverview = useCallback(async () => {
@@ -230,7 +179,9 @@ export function ImportedSensorBreakdown({
         `${historyEndpoint}?group=${encodeURIComponent(groupId)}`,
         {
           cache: 'no-store',
-          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+          headers: accessToken
+            ? { Authorization: `Bearer ${accessToken}` }
+            : undefined,
         },
       );
       const payload: unknown = await response.json();
@@ -258,8 +209,12 @@ export function ImportedSensorBreakdown({
     [overview],
   );
   const resolvedEntityId = useMemo(() => {
-    if (selectedEntityId && sources.some((source) => source.entityId === selectedEntityId)) {
-      return selectedEntityId;
+    const requestedEntityId = controlledEntityId ?? localSelectedEntityId;
+    if (
+      requestedEntityId &&
+      sources.some((source) => source.entityId === requestedEntityId)
+    ) {
+      return requestedEntityId;
     }
     const primary = primaryEntityId
       ? sources.find((source) => source.entityId === primaryEntityId)
@@ -270,14 +225,16 @@ export function ImportedSensorBreakdown({
       sources[0]?.entityId ??
       null
     );
-  }, [primaryEntityId, selectedEntityId, sources]);
+  }, [controlledEntityId, localSelectedEntityId, primaryEntityId, sources]);
 
   useEffect(() => {
     if (!resolvedEntityId) return;
     let cancelled = false;
     void fetch(`${historyEndpoint}/${encodeURIComponent(resolvedEntityId)}`, {
       cache: 'no-store',
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+      headers: accessToken
+        ? { Authorization: `Bearer ${accessToken}` }
+        : undefined,
     })
       .then(async (response) => {
         const payload: unknown = await response.json();
@@ -307,7 +264,8 @@ export function ImportedSensorBreakdown({
   }, [accessToken, historyEndpoint, resolvedEntityId]);
 
   const selected = useMemo(
-    () => sources.find((source) => source.entityId === resolvedEntityId) ?? null,
+    () =>
+      sources.find((source) => source.entityId === resolvedEntityId) ?? null,
     [resolvedEntityId, sources],
   );
   const grouped = useMemo(() => groupedSources(sources), [sources]);
@@ -319,7 +277,9 @@ export function ImportedSensorBreakdown({
   if (overview.phase === 'loading') {
     return (
       <section className={cn('rounded-2xl bg-[#fcfbf8] px-4 py-4', className)}>
-        <p className="text-[12px] text-[#6b777f]">Loading recorded sensor history…</p>
+        <p className="text-[12px] text-[#6b777f]">
+          Loading recorded sensor history…
+        </p>
       </section>
     );
   }
@@ -357,12 +317,44 @@ export function ImportedSensorBreakdown({
     <section className={cn('space-y-4', className)}>
       <div className="rounded-2xl border border-[#e0d8cb] bg-[#fcfbf8] px-4 py-3">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f7040]">
-          Recorded source breakdown
+          Parameter
         </p>
         <p className="mt-1 text-[12px] leading-5 text-[#52626c]">{note}</p>
-        <p className="mt-2 text-[10px] text-[#6b777f]">
-          {summaryGroup?.availableCount ?? 0} of {summaryGroup?.sourceCount ?? sources.length} sources have at least one complete daily record.
-          {' '}The snapshot ends on 19 Sept 2026; this is historical data, not a live reading.
+        <label
+          htmlFor={`recorded-parameter-${groupId}`}
+          className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b777f]"
+        >
+          Choose a recorded parameter
+        </label>
+        <select
+          id={`recorded-parameter-${groupId}`}
+          value={resolvedEntityId ?? ''}
+          onChange={(event) => {
+            if (onSelectEntityId) {
+              onSelectEntityId(event.target.value);
+              return;
+            }
+            setLocalSelectedEntityId(event.target.value);
+          }}
+          className="mt-1.5 h-11 w-full appearance-auto rounded-xl border border-[#d8cdbd] bg-white px-3 text-[14px] font-medium text-[#153044] outline-none transition focus:border-[#a88348] focus:ring-2 focus:ring-[#a88348]/20"
+        >
+          {grouped.map(([label, entries]) => (
+            <optgroup key={label} label={label}>
+              {entries.map((source) => (
+                <option key={source.entityId} value={source.entityId}>
+                  {source.label}
+                  {source.areaLabel ? ` · ${source.areaLabel}` : ''}
+                  {source.isArchived ? ' · Archived' : ''}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        <p className="mt-2 text-[10px] leading-4 text-[#6b777f]">
+          {summaryGroup?.availableCount ?? 0} of{' '}
+          {summaryGroup?.sourceCount ?? sources.length} sources have at least
+          one complete daily record. The snapshot ends on 19 Sept 2026; this is
+          historical data, not a live reading.
         </p>
       </div>
 
@@ -391,16 +383,27 @@ export function ImportedSensorBreakdown({
           history.data.source &&
           history.data.daily ? (
             <>
-              <TapeForSource source={history.data.source} days={history.data.daily} />
+              <TapeForSource
+                source={history.data.source}
+                days={history.data.daily}
+              />
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <SourceMetric
-                  label={selected.aggregation === 'daily_total' ? 'Last 7 days' : '7-day average'}
+                  label={
+                    selected.aggregation === 'daily_total'
+                      ? 'Last 7 days'
+                      : '7-day average'
+                  }
                   value={
                     selected.last7Days
                       ? formatNumber(selected.last7Days.value, selected.unit)
                       : formatNumber(0, selected.unit)
                   }
-                  note={selected.last7Days ? `${formatDate(selected.last7Days.from)} – ${formatDate(selected.last7Days.to)}` : 'No complete daily window'}
+                  note={
+                    selected.last7Days
+                      ? `${formatDate(selected.last7Days.from)} – ${formatDate(selected.last7Days.to)}`
+                      : 'No complete daily window'
+                  }
                 />
                 <SourceMetric
                   label="Latest complete day"
@@ -409,7 +412,11 @@ export function ImportedSensorBreakdown({
                       ? formatNumber(selected.latest.value, selected.unit)
                       : formatNumber(0, selected.unit)
                   }
-                  note={selected.latest ? formatDate(selected.latest.day) : 'Not available'}
+                  note={
+                    selected.latest
+                      ? formatDate(selected.latest.day)
+                      : 'Not available'
+                  }
                 />
                 <SourceMetric
                   label="Coverage"
@@ -417,13 +424,15 @@ export function ImportedSensorBreakdown({
                   note={`${formatDate(selected.firstObservedAt)} – ${formatDate(selected.dataThrough)}`}
                 />
               </div>
-              {history.data.detail !== 'Only complete, normalized daily observations are displayed.' ? (
+              {history.data.detail !==
+              'Only complete, normalized daily observations are displayed.' ? (
                 <p className="rounded-xl bg-[#f7f3ec] px-3 py-2 text-[11px] leading-4 text-[#6b777f]">
                   {history.data.detail}
                 </p>
               ) : null}
             </>
-          ) : history.phase === 'error' && history.entityId === resolvedEntityId ? (
+          ) : history.phase === 'error' &&
+            history.entityId === resolvedEntityId ? (
             <p className="rounded-xl bg-[#fdf8f5] px-3 py-2 text-[12px] text-[#8a4b3a]">
               {history.message}
             </p>
@@ -434,39 +443,6 @@ export function ImportedSensorBreakdown({
           )}
         </div>
       ) : null}
-
-      <div>
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f7040]">
-          All recorded sensor sources · {sources.length}
-        </p>
-        <div className="space-y-2">
-          {grouped.map(([label, entries]) => (
-            <details
-              key={label}
-              open={entries.some((source) => source.entityId === resolvedEntityId)}
-              className="group overflow-hidden rounded-2xl border border-[#e0d8cb] bg-[#fcfbf8]"
-            >
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 text-[13px] font-medium text-[#153044] [&::-webkit-details-marker]:hidden">
-                <span className="min-w-0 truncate">{label}</span>
-                <span className="flex shrink-0 items-center gap-1.5 text-[10px] font-normal text-[#6b777f]">
-                  {entries.length} source{entries.length === 1 ? '' : 's'}
-                  <ChevronDown className="size-3.5 transition group-open:rotate-180" />
-                </span>
-              </summary>
-              <ul className="border-t border-[#e0d8cb]">
-                {entries.map((source) => (
-                  <SourceButton
-                    key={source.entityId}
-                    source={source}
-                    selected={source.entityId === resolvedEntityId}
-                    onSelect={() => setSelectedEntityId(source.entityId)}
-                  />
-                ))}
-              </ul>
-            </details>
-          ))}
-        </div>
-      </div>
     </section>
   );
 }

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ImportedSensorBreakdown } from '@/components/app/imported-sensor-breakdown';
-import { SystemCard } from '@/components/app/system-card';
 import type {
   ImportedSensorGroup,
   SensorHistoryOverviewResponse,
@@ -18,16 +17,14 @@ const systemDescriptions: Record<string, string> = {
     'Feeder meters, electrical branches, phases, power quality and UPS evidence. Totals and branches remain separate.',
   water:
     'Main, house and lodge meter/flow evidence. Each meter is read independently; no unsupported site total is created.',
-  fuel:
-    'Fuel-tank and resilience measurements from the historical recorder. Oriel does not infer a burn rate or service status.',
+  fuel: 'Fuel-tank and resilience measurements from the historical recorder. Oriel does not infer a burn rate or service status.',
   climate:
     'Area environment and weather-station statistics: temperature, humidity, illuminance, rain, wind, solar and pressure.',
   security:
     'Operational telemetry only: NVR capacity, recording mix, camera storage/write rate and battery history. No footage or access claims.',
   network:
     'Starlink, node health, switch/PoE and equipment telemetry. Overlapping sources stay distinct rather than being combined.',
-  care:
-    'Printer consumable history from the recorder. This is measured stock, not a service ticket or cost record.',
+  care: 'Printer consumable history from the recorder. This is measured stock, not a service ticket or cost record.',
   sensors:
     'Additional historical statistics that do not safely belong to a utility or equipment group.',
 };
@@ -61,19 +58,9 @@ function isOverview(value: unknown): value is SensorHistoryOverviewResponse {
   );
 }
 
-function conditionFor(group: ImportedSensorGroup) {
-  if (group.availableCount === group.sourceCount) {
-    return { condition: 'normal' as const, label: 'Recorded' };
-  }
-  if (group.availableCount > 0) {
-    return { condition: 'watch' as const, label: 'Partial history' };
-  }
-  return { condition: 'attention' as const, label: 'Needs review' };
-}
-
 /**
- * This is the original Systems workspace, now driven by recorder-backed
- * groups instead of its sample boiler, gate, and failover narratives.
+ * Direct system navigation for the original Oriel workspace. A system and a
+ * parameter are chosen in native controls immediately above the reading.
  */
 export function ImportedSystemsWorkspace({
   historyEndpoint = '/api/sensor-history',
@@ -84,12 +71,17 @@ export function ImportedSystemsWorkspace({
 }) {
   const [state, setState] = useState<LoadState>({ phase: 'loading' });
   const [selectedGroupId, setSelectedGroupId] = useState('power');
+  const [selectedSourceByGroup, setSelectedSourceByGroup] = useState<
+    Record<string, string>
+  >({});
 
   const load = useCallback(async () => {
     try {
       const response = await fetch(historyEndpoint, {
         cache: 'no-store',
-        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+        headers: accessToken
+          ? { Authorization: `Bearer ${accessToken}` }
+          : undefined,
       });
       const payload: unknown = await response.json();
       if (!response.ok || !isOverview(payload)) throw new Error('Unavailable');
@@ -115,7 +107,9 @@ export function ImportedSystemsWorkspace({
   }, [state]);
 
   if (state.phase === 'loading') {
-    return <p className="text-[13px] text-[#6b777f]">Loading recorded systems…</p>;
+    return (
+      <p className="text-[13px] text-[#6b777f]">Loading recorded systems…</p>
+    );
   }
 
   if (state.phase === 'error') {
@@ -134,28 +128,31 @@ export function ImportedSystemsWorkspace({
     groups.find((group) => group.id === selectedGroupId) ?? groups[0]!;
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-3 sm:grid-cols-2">
-        {groups.map((group) => {
-          const condition = conditionFor(group);
-          return (
-            <SystemCard
-              key={group.id}
-              system={{
-                id: group.id,
-                name: group.label,
-                condition: condition.condition,
-                conditionLabel: condition.label,
-                reading: `${group.availableCount} / ${group.sourceCount} sources with complete daily history`,
-                lastUpdated: 'Historical snapshot through 19 Sept 2026',
-                watching: systemDescriptions[group.id] ?? systemDescriptions.sensors,
-              }}
-              onOpen={() => setSelectedGroupId(group.id)}
-              className={group.id === selected.id ? 'border-[#a88348]' : undefined}
-            />
-          );
-        })}
-      </div>
+    <div className="space-y-4">
+      <section className="rounded-2xl border border-[#e0d8cb] bg-[#fcfbf8] px-4 py-3">
+        <label
+          htmlFor="recorded-system"
+          className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f7040]"
+        >
+          System
+        </label>
+        <select
+          id="recorded-system"
+          value={selected.id}
+          onChange={(event) => setSelectedGroupId(event.target.value)}
+          className="mt-1.5 h-11 w-full appearance-auto rounded-xl border border-[#d8cdbd] bg-white px-3 text-[14px] font-medium text-[#153044] outline-none transition focus:border-[#a88348] focus:ring-2 focus:ring-[#a88348]/20"
+        >
+          {groups.map((group) => (
+            <option key={group.id} value={group.id}>
+              {group.label}
+            </option>
+          ))}
+        </select>
+        <p className="mt-2 text-[10px] leading-4 text-[#6b777f]">
+          {selected.availableCount} of {selected.sourceCount} sources have a
+          complete daily record.
+        </p>
+      </section>
 
       <ImportedSensorBreakdown
         groupId={selected.id}
@@ -163,6 +160,13 @@ export function ImportedSystemsWorkspace({
         note={systemDescriptions[selected.id] ?? systemDescriptions.sensors}
         historyEndpoint={historyEndpoint}
         accessToken={accessToken}
+        selectedEntityId={selectedSourceByGroup[selected.id]}
+        onSelectEntityId={(entityId) =>
+          setSelectedSourceByGroup((current) => ({
+            ...current,
+            [selected.id]: entityId,
+          }))
+        }
       />
     </div>
   );
