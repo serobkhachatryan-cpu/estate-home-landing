@@ -1,6 +1,8 @@
 import {
   index,
   integer,
+  primaryKey,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -36,6 +38,7 @@ export const w3dsAuthOffers = sqliteTable(
     completedEname: text('completed_ename'),
     completedAt: text('completed_at'),
     claimedAt: text('claimed_at'),
+    failureCode: text('failure_code'),
     createdAt: text('created_at').notNull(),
   },
   (table) => [index('idx_w3ds_auth_offers_expires').on(table.expiresAt)],
@@ -88,6 +91,128 @@ export const homeAssistantConnections = sqliteTable(
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },
+);
+
+/**
+ * Normalized utility history is deliberately separate from any original Home
+ * Assistant recorder. The production database receives only calculated daily
+ * values, never an archive or Home Assistant credential.
+ */
+export const utilityHistoryImports = sqliteTable(
+  'utility_history_imports',
+  {
+    ownerEname: text('owner_ename').notNull(),
+    utility: text('utility').notNull(),
+    sourceLabel: text('source_label').notNull(),
+    sourceScope: text('source_scope').notNull(),
+    sourceEntityId: text('source_entity_id').notNull(),
+    unit: text('unit').notNull(),
+    timezone: text('timezone').notNull(),
+    firstObservedAt: text('first_observed_at').notNull(),
+    dataThrough: text('data_through').notNull(),
+    importedAt: text('imported_at').notNull(),
+    quality: text('quality').notNull(),
+    qualityDetail: text('quality_detail'),
+    ratePencePerUnit: real('rate_pence_per_unit'),
+  },
+  (table) => [primaryKey({ columns: [table.ownerEname, table.utility] })],
+);
+
+export const utilityHistoryDailyPoints = sqliteTable(
+  'utility_history_daily_points',
+  {
+    ownerEname: text('owner_ename').notNull(),
+    utility: text('utility').notNull(),
+    day: text('day').notNull(),
+    consumption: real('consumption').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.ownerEname, table.utility, table.day] }),
+    index('idx_utility_history_daily_points_lookup').on(
+      table.ownerEname,
+      table.utility,
+      table.day,
+    ),
+  ],
+);
+
+/**
+ * Recorder-derived sensor history is stored as complete daily values. The
+ * raw Home Assistant database stays on the owner's machine.
+ */
+export const sensorHistoryImports = sqliteTable(
+  'sensor_history_imports',
+  {
+    ownerEname: text('owner_ename').notNull(),
+    entityId: text('entity_id').notNull(),
+    label: text('label').notNull(),
+    deviceLabel: text('device_label'),
+    areaLabel: text('area_label'),
+    groupId: text('group_id').notNull(),
+    groupLabel: text('group_label').notNull(),
+    unit: text('unit'),
+    unitClass: text('unit_class'),
+    aggregation: text('aggregation').notNull(),
+    isArchived: integer('is_archived').notNull().default(0),
+    firstObservedAt: text('first_observed_at').notNull(),
+    dataThrough: text('data_through').notNull(),
+    importedAt: text('imported_at').notNull(),
+    quality: text('quality').notNull(),
+    qualityDetail: text('quality_detail'),
+    pointCount: integer('point_count').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.ownerEname, table.entityId] }),
+    index('idx_sensor_history_imports_group').on(
+      table.ownerEname,
+      table.groupId,
+      table.label,
+    ),
+  ],
+);
+
+export const sensorHistoryDailyPoints = sqliteTable(
+  'sensor_history_daily_points',
+  {
+    ownerEname: text('owner_ename').notNull(),
+    entityId: text('entity_id').notNull(),
+    day: text('day').notNull(),
+    value: real('value').notNull(),
+    minimum: real('minimum'),
+    maximum: real('maximum'),
+    sampleCount: integer('sample_count').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.ownerEname, table.entityId, table.day] }),
+    index('idx_sensor_history_daily_points_lookup').on(
+      table.ownerEname,
+      table.entityId,
+      table.day,
+    ),
+  ],
+);
+
+/**
+ * A viewer receives only an opaque bearer secret in a URL fragment. D1 keeps
+ * its SHA-256 digest, never the share secret itself.
+ */
+export const investorShares = sqliteTable(
+  'investor_shares',
+  {
+    shareHash: text('share_hash').primaryKey(),
+    ownerEname: text('owner_ename').notNull(),
+    label: text('label').notNull(),
+    expiresAt: text('expires_at'),
+    revokedAt: text('revoked_at'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('idx_investor_shares_owner_expires').on(
+      table.ownerEname,
+      table.expiresAt,
+    ),
+  ],
 );
 
 export const properties = sqliteTable('properties', {

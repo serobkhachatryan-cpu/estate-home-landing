@@ -29,6 +29,13 @@
       "when": 1789312047979,
       "tag": "0003_home_assistant_oauth",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1789846887996,
+      "tag": "0004_little_the_fallen",
+      "breakpoints": true
     }
   ]
 }

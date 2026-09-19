@@ -1,6 +1,11 @@
 import { env } from 'cloudflare:workers';
 
 import { database, ensureSchema } from '@/lib/server/database';
+import {
+  isLocalOrielDevelopment,
+  localHomeAssistantOrigin,
+  localOrielOrigin,
+} from '@/lib/server/local-development';
 
 export const homeAssistantUtilityKinds = ['electricity', 'water'] as const;
 
@@ -111,15 +116,19 @@ function isPrivateHost(hostname: string) {
 function validatedInstanceUrl(value: string) {
   try {
     const url = new URL(value.trim());
-    if (
-      url.protocol !== 'https:' ||
-      url.username ||
-      url.password ||
-      url.search ||
-      url.hash ||
-      (url.pathname !== '' && url.pathname !== '/') ||
-      isPrivateHost(url.hostname)
-    ) {
+    const isRootUrl =
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash &&
+      (url.pathname === '' || url.pathname === '/');
+    if (!isRootUrl) return null;
+
+    if (isLocalOrielDevelopment() && url.origin === localHomeAssistantOrigin) {
+      return url.origin;
+    }
+
+    if (url.protocol !== 'https:' || isPrivateHost(url.hostname)) {
       return null;
     }
     return url.origin;
@@ -139,16 +148,19 @@ function publicOrielOrigin() {
 
   try {
     const url = new URL(configured);
-    if (
-      url.protocol !== 'https:' ||
-      url.username ||
-      url.password ||
-      url.search ||
-      url.hash ||
-      (url.pathname !== '' && url.pathname !== '/')
-    ) {
-      return null;
+    const isRootUrl =
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash &&
+      (url.pathname === '' || url.pathname === '/');
+    if (!isRootUrl) return null;
+
+    if (isLocalOrielDevelopment() && url.origin === localOrielOrigin) {
+      return url.origin;
     }
+
+    if (url.protocol !== 'https:') return null;
     return url.origin;
   } catch {
     return null;
@@ -255,17 +267,53 @@ async function postToken(
   values: Record<string, string>,
 ): Promise<TokenResponse | null> {
   const body = new URLSearchParams(values);
-  const upstream = await fetch(new URL('/auth/token', instanceUrl), {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body,
-    redirect: 'error',
-  });
-  if (!upstream.ok) return null;
-  return (await upstream.json()) as TokenResponse;
+  const timeout = new AbortController();
+  const timeoutId = setTimeout(() => timeout.abort(), 8_000);
+  try {
+    const upstream = await fetch(new URL('/auth/token', instanceUrl), {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body,
+      // Workers does not implement redirect: 'error'. Manual mode also keeps
+      // OAuth/token requests from following an unexpected upstream redirect.
+      redirect: 'manual',
+      signal: timeout.signal,
+    });
+    if (!upstream.ok) return null;
+    return (await upstream.json()) as TokenResponse;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Removing a connection must always remove Oriel's encrypted copy, even when
+ * Home Assistant is offline. When it is reachable, revoke the refresh token
+ * as well so the upstream authorization ends immediately.
+ */
+async function revokeRefreshToken(instanceUrl: string, refreshToken: string) {
+  const timeout = new AbortController();
+  const timeoutId = setTimeout(() => timeout.abort(), 8_000);
+  try {
+    await fetch(new URL('/auth/revoke', instanceUrl), {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ token: refreshToken }),
+      redirect: 'manual',
+      signal: timeout.signal,
+    });
+  } catch {
+    // The local encrypted copy still gets deleted below. A user can also
+    // revoke an unreachable instance's authorization from Home Assistant.
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function activeAccessToken(connection: ConnectionRow) {
@@ -331,7 +379,11 @@ export function validateHomeAssistantConnectInput(
       : null;
 
   if (!instanceUrl) {
-    throw new Error('Use the public HTTPS address for Home Assistant.');
+    throw new Error(
+      isLocalOrielDevelopment()
+        ? 'Use the configured local Home Assistant address or a public HTTPS address.'
+        : 'Use the public HTTPS address for Home Assistant.',
+    );
   }
   if (!electricityEntityId || !waterEntityId) {
     throw new Error('Enter both sensor IDs in domain.object_id form.');
@@ -503,10 +555,31 @@ export async function getHomeAssistantConnectionSummary(
 
 export async function disconnectHomeAssistant(ownerEname: string) {
   await ensureSchema();
+  const connection = await database()
+    .prepare(
+      `SELECT owner_ename, instance_url, client_id, electricity_entity_id,
+        water_entity_id, access_token_encrypted, refresh_token_encrypted,
+        access_token_expires_at, updated_at
+       FROM home_assistant_connections WHERE owner_ename = ? LIMIT 1`,
+    )
+    .bind(ownerEname)
+    .first<ConnectionRow>();
+
   await database()
     .prepare('DELETE FROM home_assistant_connections WHERE owner_ename = ?')
     .bind(ownerEname)
     .run();
+
+  if (connection) {
+    try {
+      await revokeRefreshToken(
+        connection.instance_url,
+        await decryptSecret(connection.refresh_token_encrypted),
+      );
+    } catch {
+      // Decryption failure must not leave the local connection record behind.
+    }
+  }
 }
 
 /**
@@ -551,7 +624,7 @@ export async function getHomeAssistantUtilityState(
             Accept: 'application/json',
             Authorization: `Bearer ${accessToken}`,
           },
-          redirect: 'error',
+          redirect: 'manual',
           signal: timeout.signal,
         },
       );

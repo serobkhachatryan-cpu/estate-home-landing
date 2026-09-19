@@ -2,11 +2,11 @@
 
 import { ChevronRight } from 'lucide-react';
 import { StatusBadge } from '@/components/app/status-badge';
-import type { ConditionState, SystemId } from '@/lib/fixtures/types';
+import type { ConditionState } from '@/lib/fixtures/types';
 import { cn } from '@/lib/utils';
 
 type SystemCardModel = {
-  id: SystemId;
+  id: string;
   name: string;
   condition: ConditionState;
   conditionLabel: string;

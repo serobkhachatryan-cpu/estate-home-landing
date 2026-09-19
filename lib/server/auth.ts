@@ -4,6 +4,7 @@ import {
   getW3dsSessionEname,
   w3dsSessionCookieName,
 } from '@/lib/server/w3ds-auth';
+import { localDevelopmentViewerEName } from '@/lib/server/local-development';
 
 export type AuthenticatedViewer = {
   id: string;
@@ -36,7 +37,14 @@ export async function getAuthenticatedViewer(): Promise<AuthenticatedViewer | nu
     readBearerToken(requestHeaders.get('authorization')) ??
       readCookie(requestHeaders.get('cookie'), w3dsSessionCookieName()),
   );
-  if (!eName) return null;
+  if (eName) return { id: eName, eName, displayName: eName };
 
-  return { id: eName, eName, displayName: eName };
+  const localEName = localDevelopmentViewerEName(requestHeaders.get('host'));
+  if (!localEName) return null;
+
+  return {
+    id: localEName,
+    eName: localEName,
+    displayName: 'Oriel local administrator',
+  };
 }

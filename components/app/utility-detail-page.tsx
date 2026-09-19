@@ -3,17 +3,12 @@
 import { AppLink } from '@/components/app/app-link';
 import { useState } from 'react';
 import { PageHeader } from '@/components/app/app-shell';
-import { HomeAssistantUtilityStatus } from '@/components/app/home-assistant-utility-status';
-import { SpendWeeklyTape } from '@/components/app/spend-weekly-tape';
+import { ImportedSensorBreakdown } from '@/components/app/imported-sensor-breakdown';
 import { Button } from '@/components/ui/button';
 import type { UtilityDetail } from '@/lib/fixtures/utilities';
-import { getSpendSubparameter } from '@/lib/fixtures/spend-tree';
 
 export function UtilityDetailPage({ detail }: { detail: UtilityDetail }) {
   const [resolved, setResolved] = useState(false);
-  const subId = detail.id === 'electricity' ? 'energy' : 'water';
-  const match = getSpendSubparameter('utilities', subId);
-  const sub = match?.subparameter;
 
   return (
     <div>
@@ -26,17 +21,30 @@ export function UtilityDetailPage({ detail }: { detail: UtilityDetail }) {
 
       <PageHeader title={detail.name} />
 
-      <HomeAssistantUtilityStatus utility={detail.id} />
-
-      <SpendWeeklyTape
-        subject={{
-          id: `utilities:${subId}`,
-          name: sub?.name ?? detail.name,
-          plan: sub?.plan ?? 0,
-          fact: sub?.fact ?? 0,
-          forecast: sub?.forecast ?? 0,
-        }}
+      <ImportedSensorBreakdown
+        groupId={detail.id === 'electricity' ? 'power' : 'water'}
+        primaryEntityId={
+          detail.id === 'electricity'
+            ? 'sensor.shellypro3em_9454c5b9da04_energy'
+            : 'sensor.house_water_1_total_l'
+        }
+        note={
+          detail.id === 'electricity'
+            ? 'Each feeder, total and phase is a separate source. Oriel does not add a meter total to its phase branches or make an unsupported estate-wide energy total.'
+            : 'Each meter and flow source is kept separate. Water use is calculated only from consecutive meter states; Home Assistant sum fields are not used for these meters.'
+        }
       />
+
+      <section className="mb-4 rounded-2xl border border-[#e0d8cb] bg-[#fcfbf8] px-4 py-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f7040]">
+          Financial data
+        </p>
+        <p className="mt-1 text-[12px] leading-5 text-[#52626c]">
+          Meter history measures consumption, not billed spend. Oriel will not
+          show a utility cost as fact until invoices or an approved tariff
+          model are imported. Any estimate is labelled separately.
+        </p>
+      </section>
 
       {detail.exception && !resolved ? (
         <section className="mt-4 rounded-2xl bg-[#fdf8f5] px-4 py-4">

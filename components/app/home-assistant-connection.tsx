@@ -46,9 +46,11 @@ function statusMessage(status: string | undefined) {
 
 export function HomeAssistantConnection({
   connection,
+  localDevelopment = false,
   status,
 }: {
   connection: ConnectionSummary;
+  localDevelopment?: boolean;
   status?: string;
 }) {
   const [form, setForm] = useState<ConnectForm>({
@@ -129,6 +131,13 @@ export function HomeAssistantConnection({
         description="Use your own Home Assistant unit for live electricity and water readings."
       />
 
+      {localDevelopment ? (
+        <div className="mb-4 rounded-2xl bg-[#edf4f4] px-4 py-3 text-[13px] leading-5 text-[#35545a]">
+          Local development mode is active. Oriel can reach only this Mac’s Home
+          Assistant VM; the connection is not exposed to the internet.
+        </div>
+      ) : null}
+
       {message ? (
         <div className="mb-4 rounded-2xl bg-[#f3eadc] px-4 py-3 text-[13px] text-[#61502e]">
           {message}
@@ -196,7 +205,9 @@ export function HomeAssistantConnection({
           <FieldGroup className="gap-3">
             <Field>
               <FieldLabel htmlFor="home-assistant-url">
-                Home Assistant HTTPS address
+                {localDevelopment
+                  ? 'Home Assistant address'
+                  : 'Home Assistant HTTPS address'}
               </FieldLabel>
               <Input
                 id="home-assistant-url"
@@ -204,7 +215,11 @@ export function HomeAssistantConnection({
                 required
                 type="url"
                 autoComplete="url"
-                placeholder="https://your-home.ui.nabu.casa"
+                placeholder={
+                  localDevelopment
+                    ? 'http://127.0.0.1:8125'
+                    : 'https://your-home.ui.nabu.casa'
+                }
                 value={form.instanceUrl}
                 onChange={(event) =>
                   setForm((current) => ({

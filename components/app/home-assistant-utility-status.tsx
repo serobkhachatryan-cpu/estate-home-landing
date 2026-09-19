@@ -107,6 +107,8 @@ export function HomeAssistantUtilityStatus({
   }, [refresh]);
 
   const isConnected = reading?.status === 'connected';
+  const isLocalTestSensor =
+    isConnected && Boolean(reading?.entityId?.startsWith('sensor.oriel_demo_'));
   const issue =
     reading && reading.status !== 'connected'
       ? statusCopy[reading.status]
@@ -123,15 +125,24 @@ export function HomeAssistantUtilityStatus({
           <div className="flex items-center gap-2">
             <Radio className="size-4 text-[#8f7040]" strokeWidth={1.8} />
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f7040]">
-              Home Assistant unit
+              {isLocalTestSensor
+                ? 'Home Assistant connection check'
+                : 'Home Assistant unit'}
             </p>
           </div>
           <p className="mt-1 text-[13px] text-[#52626c]">
-            {loading ? 'Reading the selected utility sensor…' : reading?.detail}
+            {loading
+              ? 'Reading the selected utility sensor…'
+              : isLocalTestSensor
+                ? 'This local test sensor confirms the connection. It is not the imported property meter history above.'
+                : reading?.detail}
           </p>
         </div>
         {isConnected ? (
-          <StatusBadge state="normal" label="Live" />
+          <StatusBadge
+            state={isLocalTestSensor ? 'watch' : 'normal'}
+            label={isLocalTestSensor ? 'Test data' : 'Live'}
+          />
         ) : issue ? (
           <StatusBadge state={issue.state} label={issue.badge} />
         ) : null}

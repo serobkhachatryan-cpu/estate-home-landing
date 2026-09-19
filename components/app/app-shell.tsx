@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Settings, Wallet } from 'lucide-react';
+import { Cpu, LayoutDashboard, Settings, Wallet } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { AppLink } from '@/components/app/app-link';
 import { cn } from '@/lib/utils';
@@ -14,6 +14,16 @@ const tabs: {
   match?: (pathname: string) => boolean;
 }[] = [
   { href: '/app', label: 'Home', icon: LayoutDashboard, exact: true },
+  {
+    href: '/app/systems',
+    label: 'Systems',
+    icon: Cpu,
+    match: (pathname) =>
+      pathname.startsWith('/app/systems') ||
+      pathname.startsWith('/app/electricity') ||
+      pathname.startsWith('/app/water') ||
+      pathname.startsWith('/app/care'),
+  },
   {
     href: '/app/spending',
     label: 'Spend',
@@ -89,7 +99,7 @@ export function AppShell({
           className="fixed bottom-0 left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 border-t border-[#e0d8cb] bg-[#f5f1e9]/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 backdrop-blur-md sm:max-w-[480px] lg:max-w-[430px]"
           aria-label="Primary"
         >
-          <div className="grid grid-cols-3 gap-1">
+          <div className="grid grid-cols-4 gap-1">
             {tabs.map((item) => {
               const active = isActive(pathname, item);
               const Icon = item.icon;

@@ -49,7 +49,7 @@ export default async function SettingsPage() {
         >
           <div className="flex items-center justify-between gap-3">
             <p className="text-[14px] font-medium text-[#153044]">
-              Home Assistant utilities
+              Home Assistant connection
             </p>
             <span
               className={
@@ -63,21 +63,21 @@ export default async function SettingsPage() {
           </div>
           <p className="mt-1 text-[12px] leading-5 text-[#6b777f]">
             {homeAssistant.connected
-              ? 'Electricity and water are connected to your selected sensors.'
-              : 'Connect your own electricity and water sensors securely.'}
+              ? 'Live connection check is configured. Historical sensor records stay separate in Systems.'
+              : 'Connect a Home Assistant source securely for live utility checks.'}
           </p>
+        </AppLink>
+        <AppLink
+          href="/app/systems"
+          className="block rounded-2xl bg-[#fcfbf8] px-4 py-3 text-[14px] font-medium text-[#153044]"
+        >
+          Recorded systems & sensor history
         </AppLink>
         <AppLink
           href="/app/value"
           className="block rounded-2xl bg-[#fcfbf8] px-4 py-3 text-[14px] font-medium text-[#153044]"
         >
           Paid → received
-        </AppLink>
-        <AppLink
-          href="/app/stages"
-          className="block rounded-2xl bg-[#fcfbf8] px-4 py-3 text-[14px] font-medium text-[#153044]"
-        >
-          Stages
         </AppLink>
         <AppLink
           href="/"

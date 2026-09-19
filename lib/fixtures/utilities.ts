@@ -24,73 +24,59 @@ export type UtilityDetail = {
 export const electricityDetail: UtilityDetail = {
   id: 'electricity',
   name: 'Electricity',
-  statusLabel: 'Needs a look',
-  status: 'exception',
-  spent: '£1,970 this month',
-  benefit: 'Most of that bought useful work in the house',
+  statusLabel: 'Historical meter selected',
+  status: 'ok',
+  spent: 'Billing data not imported',
+  benefit: 'Recorded consumption is shown separately from invoice data',
   plainStory:
-    'For a large London house, ~£22–24k / year for electricity is in range. The question is: what ran, was it needed, and did the pounds buy useful outcome or idle waste?',
+    'Oriel keeps meter history and financial records separate. A kWh reading is a recorded measurement; a cost becomes fact only when a bill or approved tariff model is available.',
   readings: [
     {
-      label: 'Spend',
-      value: '£1,970',
-      context: 'This month · ~£455 / week pace',
+      label: 'Meter history',
+      value: 'Imported',
+      context: 'Only validated source intervals are shown',
     },
     {
-      label: 'Useful share',
-      value: '~92%',
-      context: 'Aligned to how the house is used',
+      label: 'Cost',
+      value: 'Not billed',
+      context: 'An estimate is never presented as an invoice',
     },
     {
-      label: 'Idle overnight',
-      value: 'A little high',
-      context: 'Exception · circuits that may not need to stay awake',
+      label: 'Scope',
+      value: 'Selected meter',
+      context: 'No unconfirmed estate-wide aggregation',
     },
   ],
-  exception: {
-    title: 'Overnight standby a little high',
-    detail:
-      'Baseload after midnight is above the quiet band for this home (~£40–60 / month if it repeats). Money without a clear job.',
-    nextStep:
-      'Confirm which circuits must stay on. No live toggles in this prototype — decision only.',
-  },
   whatWeAreNotDoing:
-    'No camera feeds, no people-tracking, no per-bulb toy controls. Stage 1 is spend → benefit for power.',
+    'No camera feeds, no people-tracking, no per-bulb toy controls. Stage 1 is recorded meter use with explicit financial evidence.',
 };
 
 export const waterDetail: UtilityDetail = {
   id: 'water',
   name: 'Water',
-  statusLabel: 'Needs a look',
-  status: 'exception',
-  spent: '£220 this month',
-  benefit: 'Household use looks intentional · one overnight rise flagged',
+  statusLabel: 'Historical meter selected',
+  status: 'ok',
+  spent: 'Billing data not imported',
+  benefit: 'Only continuous, validated meter intervals are shown',
   plainStory:
-    'Supply + wastewater for a large London house with garden use sits near ~£2.4–2.7k / year. Litres matter as useful use versus loss.',
+    'Water history is shown only after Oriel’s continuity checks. Older intervals that cannot be trusted are withheld instead of being smoothed into a misleading total.',
   readings: [
     {
-      label: 'Spend',
-      value: '£220',
-      context: 'This month · on a ~£2.6k / year pace',
+      label: 'Meter history',
+      value: 'Validated tail',
+      context: 'Continuity check applied before display',
     },
     {
-      label: 'Daytime use',
-      value: 'Normal',
-      context: 'Matches how the house is occupied',
+      label: 'Older readings',
+      value: 'Withheld',
+      context: 'They need a meter-data decision, not interpolation',
     },
     {
-      label: 'Overnight',
-      value: 'One brief rise',
-      context: 'Exception · could be nothing or a slow leak start',
+      label: 'Cost',
+      value: 'Not billed',
+      context: 'No water tariff or invoice was present in the import',
     },
   ],
-  exception: {
-    title: 'Brief overnight flow rise',
-    detail:
-      'Flow stepped up for a short window while the house was quiet (~£15–25 if it was a slow leak start). It settled. Still worth confirming.',
-    nextStep:
-      'Mark as expected, or ask Oriel to keep watching that zone. Confirmation only in this prototype.',
-  },
   whatWeAreNotDoing:
-    'No floor-plan surveillance, no people movement map. Stage 1 is water spend → use / loss avoided.',
+    'No floor-plan surveillance or people movement map. Stage 1 is a trustworthy meter record with explicit data-quality boundaries.',
 };
