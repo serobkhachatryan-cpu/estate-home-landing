@@ -155,6 +155,7 @@ export function ImportedSystemsWorkspace({
       </section>
 
       <ImportedSensorBreakdown
+        key={selected.id}
         groupId={selected.id}
         primaryEntityId={primarySources[selected.id]}
         note={systemDescriptions[selected.id] ?? systemDescriptions.sensors}
