@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "4859b343-cbad-4346-9386-936334f84b3e",
+  "id": "4fdb575f-bfaa-415e-a5f1-432f628dd1c0",
   "prevId": "e7d72747-39e1-4b99-9812-a6e392c5971b",
   "tables": {
     "app_users": {
@@ -959,13 +959,6 @@
         },
         "claimed_at": {
           "name": "claimed_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "failure_code": {
-          "name": "failure_code",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

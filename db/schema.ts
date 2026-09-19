@@ -38,7 +38,6 @@ export const w3dsAuthOffers = sqliteTable(
     completedEname: text('completed_ename'),
     completedAt: text('completed_at'),
     claimedAt: text('claimed_at'),
-    failureCode: text('failure_code'),
     createdAt: text('created_at').notNull(),
   },
   (table) => [index('idx_w3ds_auth_offers_expires').on(table.expiresAt)],

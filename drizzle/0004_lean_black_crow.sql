@@ -68,5 +68,3 @@ CREATE TABLE `utility_history_imports` (
 	`rate_pence_per_unit` real,
 	PRIMARY KEY(`owner_ename`, `utility`)
 );
---> statement-breakpoint
-ALTER TABLE `w3ds_auth_offers` ADD `failure_code` text;
