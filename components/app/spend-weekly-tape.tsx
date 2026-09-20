@@ -118,11 +118,7 @@ export function SpendWeeklyTape({
       if (!node || index < 0) return;
       const clamped = Math.max(0, Math.min(weeks.length - 1, index));
       node.scrollTo({
-        top: scrollTopForIndex(
-          clamped,
-          node.clientHeight,
-          edgePadRef.current,
-        ),
+        top: scrollTopForIndex(clamped, node.clientHeight, edgePadRef.current),
         behavior,
       });
       setActiveIndex(clamped);
@@ -198,7 +194,9 @@ export function SpendWeeklyTape({
           />
           <Metric
             label={
-              window52?.includesForecast ? 'Fact / forecast · 52w' : 'Fact · 52w'
+              window52?.includesForecast
+                ? 'Fact / forecast · 52w'
+                : 'Fact · 52w'
             }
             value={formatWeekMoney(window52?.fact ?? subject.fact)}
             emphasize
@@ -233,8 +231,7 @@ export function SpendWeeklyTape({
                 : active.offset === 0
                   ? 'This week'
                   : `+${active.offset}w`}
-              <span className="mx-1.5 text-white/25">·</span>
-              W{active.isoWeek}
+              <span className="mx-1.5 text-white/25">·</span>W{active.isoWeek}
             </p>
             <p className="mt-1 text-[1.65rem] font-semibold leading-none tracking-[-0.05em] tabular-nums">
               {formatWeekMoney(weekPrimary)}
@@ -357,10 +354,7 @@ export function SpendWeeklyTape({
   );
 }
 
-function efficiencyForWindow(
-  fact: number,
-  plan: number,
-): WeekEfficiency {
+function efficiencyForWindow(fact: number, plan: number): WeekEfficiency {
   const ratio = fact / Math.max(plan, 1);
   if (ratio > 1.08) return 'inefficient';
   if (ratio < 0.95) return 'efficient';
@@ -503,7 +497,9 @@ function Metric({
       <p
         className={cn(
           'mt-0.5 tabular-nums text-white',
-          emphasize ? 'text-[1.05rem] font-semibold tracking-[-0.03em]' : 'text-[13px] font-medium',
+          emphasize
+            ? 'text-[1.05rem] font-semibold tracking-[-0.03em]'
+            : 'text-[13px] font-medium',
         )}
       >
         {value}
@@ -562,7 +558,19 @@ function measurementDigits(unit: string | null) {
   return 2;
 }
 
+function isPoundSterling(unit: string | null) {
+  return unit?.trim().toUpperCase() === 'GBP';
+}
+
 function formatMeasurement(value: number, unit: string | null) {
+  if (isPoundSterling(unit)) {
+    return new Intl.NumberFormat('en-GB', {
+      style: 'currency',
+      currency: 'GBP',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  }
   const digits = measurementDigits(unit);
   const formatted = new Intl.NumberFormat('en-GB', {
     maximumFractionDigits: digits,
@@ -596,7 +604,9 @@ function shortDate(value: string) {
 }
 
 function dateRange(start: string, end: string) {
-  return start === end ? shortDate(start) : `${shortDate(start)} – ${shortDate(end)}`;
+  return start === end
+    ? shortDate(start)
+    : `${shortDate(start)} – ${shortDate(end)}`;
 }
 
 function buildMeasuredWeeks(subject: MeasuredTapeSubject) {
@@ -645,9 +655,9 @@ function buildMeasuredWeeks(subject: MeasuredTapeSubject) {
 }
 
 /**
- * The original Oriel tape, adapted for recorded sensor facts. It deliberately
- * does not invent a plan, forecast, or money value when the archive only
- * contains physical measurements.
+ * The original Oriel tape, adapted for recorded sensor facts. It never
+ * invents money from physical measurements, but renders native GBP sources as
+ * their recorded costs.
  */
 export function MeasuredWeeklyTape({
   subject,
@@ -704,11 +714,7 @@ export function MeasuredWeeklyTape({
       if (!node || !weeks.length) return;
       const clamped = Math.max(0, Math.min(weeks.length - 1, index));
       node.scrollTo({
-        top: scrollTopForIndex(
-          clamped,
-          node.clientHeight,
-          edgePadRef.current,
-        ),
+        top: scrollTopForIndex(clamped, node.clientHeight, edgePadRef.current),
         behavior,
       });
       setActiveIndex(clamped);
@@ -760,13 +766,15 @@ export function MeasuredWeeklyTape({
     );
   }
 
-  const modeLabel =
-    subject.aggregation === 'daily_total'
+  const modeLabel = isPoundSterling(subject.unit)
+    ? 'Recorded cost'
+    : subject.aggregation === 'daily_total'
       ? 'Recorded use'
       : 'Daily average';
-  const range = active.minimum != null && active.maximum != null
-    ? `${formatMeasurement(active.minimum, subject.unit)} – ${formatMeasurement(active.maximum, subject.unit)}`
-    : null;
+  const range =
+    active.minimum != null && active.maximum != null
+      ? `${formatMeasurement(active.minimum, subject.unit)} – ${formatMeasurement(active.maximum, subject.unit)}`
+      : null;
 
   return (
     <section
@@ -791,7 +799,13 @@ export function MeasuredWeeklyTape({
         </p>
         <div className="mt-3 grid grid-cols-2 gap-2">
           <Metric
-            label={subject.aggregation === 'daily_total' ? 'Last 7 days' : '7-day average'}
+            label={
+              isPoundSterling(subject.unit)
+                ? 'Cost · last 7 days'
+                : subject.aggregation === 'daily_total'
+                  ? 'Last 7 days'
+                  : '7-day average'
+            }
             value={formatMeasurement(recentValue, subject.unit)}
             emphasize
           />
@@ -847,7 +861,10 @@ export function MeasuredWeeklyTape({
               'overflow-y-auto overscroll-y-contain touch-pan-y snap-y snap-mandatory',
               '[-webkit-overflow-scrolling:touch] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
             )}
-            style={{ height: VIEWPORT_HEIGHT, WebkitOverflowScrolling: 'touch' }}
+            style={{
+              height: VIEWPORT_HEIGHT,
+              WebkitOverflowScrolling: 'touch',
+            }}
             aria-label={`${subject.name} recorded weekly ribbon`}
           >
             <div

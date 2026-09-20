@@ -27,7 +27,21 @@ type SourceState =
 
 const emptySources: ImportedSensorSummary[] = [];
 
+function isPoundSterling(unit: string | null) {
+  return unit?.trim().toUpperCase() === 'GBP';
+}
+
+function formatPounds(value: number) {
+  return new Intl.NumberFormat('en-GB', {
+    style: 'currency',
+    currency: 'GBP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 function formatNumber(value: number, unit: string | null) {
+  if (isPoundSterling(unit)) return formatPounds(value);
   const digits =
     unit && /^(?:L|W|V|A|VA|MB|GB|%)$/i.test(unit)
       ? 0
@@ -55,15 +69,44 @@ function formatDate(value: string) {
   }).format(date);
 }
 
+function costIdentity(source: ImportedSensorSummary) {
+  if (
+    !isPoundSterling(source.unit) &&
+    source.unitClass?.trim().toLowerCase() !== 'monetary'
+  ) {
+    return null;
+  }
+  const match = source.entityId.match(
+    /^sensor\.shellypro3em_([a-f0-9]+)(?:_phase_([abc]))?_energy_cost$/i,
+  );
+  if (!match) {
+    return { label: 'Recorded cost', context: 'Recorded currency source' };
+  }
+  const meter = match[1].slice(-4).toUpperCase();
+  const phase = match[2]?.toUpperCase();
+  return {
+    label: phase ? `Energy cost · phase ${phase}` : 'Energy cost · meter total',
+    context: `Shelly meter ${meter}`,
+  };
+}
+
+function displaySourceLabel(source: ImportedSensorSummary) {
+  return costIdentity(source)?.label ?? source.label;
+}
+
 function sourceContext(source: ImportedSensorSummary) {
-  return [source.areaLabel, source.deviceLabel].filter(Boolean).join(' · ');
+  const location = [source.areaLabel, source.deviceLabel]
+    .filter(Boolean)
+    .join(' · ');
+  return location || costIdentity(source)?.context || '';
 }
 
 function groupedSources(sources: ImportedSensorSummary[]) {
   const groups = new Map<string, ImportedSensorSummary[]>();
   for (const source of sources) {
-    const label =
-      source.deviceLabel ?? source.areaLabel ?? 'Independent sources';
+    const label = costIdentity(source)
+      ? 'Recorded energy cost'
+      : (source.deviceLabel ?? source.areaLabel ?? 'Independent sources');
     const current = groups.get(label) ?? [];
     current.push(source);
     groups.set(label, current);
@@ -111,7 +154,7 @@ function TapeForSource({
     <MeasuredWeeklyTape
       subject={{
         id: source.entityId,
-        name: source.label,
+        name: displaySourceLabel(source),
         unit: source.unit,
         aggregation: source.aggregation,
         points,
@@ -152,6 +195,7 @@ function SourceButton({
   onSelect: () => void;
 }) {
   const primary = source.last7Days ?? source.latest;
+  const displayedLabel = displaySourceLabel(source);
   const label =
     source.aggregation === 'daily_total'
       ? source.last7Days
@@ -166,7 +210,7 @@ function SourceButton({
       <button
         type="button"
         onClick={onSelect}
-        aria-label={`Select ${source.label}`}
+        aria-label={`Select ${displayedLabel}`}
         aria-pressed={selected}
         className={cn(
           'flex w-full items-center justify-between gap-3 border-b border-[#eee8de] px-3 py-3 text-left last:border-0',
@@ -177,8 +221,13 @@ function SourceButton({
         <span className="min-w-0">
           <span className="flex items-center gap-1.5">
             <span className="truncate text-[13px] font-medium text-[#153044]">
-              {source.label}
+              {displayedLabel}
             </span>
+            {costIdentity(source) ? (
+              <span className="rounded-full bg-[#e7efe3] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-[#2f4a34]">
+                Recorded cost
+              </span>
+            ) : null}
             {source.isArchived ? (
               <span className="rounded-full bg-[#f0ebe3] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-[#5a6270]">
                 Archived
@@ -438,7 +487,7 @@ export function ImportedSensorBreakdown({
                 aria-live="polite"
                 className="mt-1 text-[17px] font-medium text-[#153044]"
               >
-                {selected.label}
+                {displaySourceLabel(selected)}
               </h2>
               <p className="mt-0.5 text-[11px] text-[#6b777f]">
                 {sourceContext(selected) || 'Historical source'}
@@ -462,9 +511,11 @@ export function ImportedSensorBreakdown({
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <SourceMetric
                   label={
-                    selected.aggregation === 'daily_total'
-                      ? 'Last 7 days'
-                      : '7-day average'
+                    costIdentity(selected)
+                      ? 'Cost · last 7 days'
+                      : selected.aggregation === 'daily_total'
+                        ? 'Last 7 days'
+                        : '7-day average'
                   }
                   value={
                     selected.last7Days
@@ -478,7 +529,11 @@ export function ImportedSensorBreakdown({
                   }
                 />
                 <SourceMetric
-                  label="Latest complete day"
+                  label={
+                    costIdentity(selected)
+                      ? 'Cost · latest day'
+                      : 'Latest complete day'
+                  }
                   value={
                     selected.latest
                       ? formatNumber(selected.latest.value, selected.unit)
@@ -496,6 +551,12 @@ export function ImportedSensorBreakdown({
                   note={`${formatDate(selected.firstObservedAt)} – ${formatDate(selected.dataThrough)}`}
                 />
               </div>
+              {costIdentity(selected) ? (
+                <p className="rounded-xl bg-[#f7f3ec] px-3 py-2 text-[11px] leading-4 text-[#6b777f]">
+                  Recorded cost for this individual meter or phase. It is not an
+                  invoice, a property-ledger record, or a combined estate total.
+                </p>
+              ) : null}
               {history.data.detail !==
               'Only complete, normalized daily observations are displayed.' ? (
                 <p className="rounded-xl bg-[#f7f3ec] px-3 py-2 text-[11px] leading-4 text-[#6b777f]">
