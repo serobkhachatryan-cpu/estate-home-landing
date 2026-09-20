@@ -4,6 +4,7 @@ import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   MeasuredWeeklyTape,
+  type MeasuredTapeCost,
   type MeasuredTapePoint,
 } from '@/components/app/spend-weekly-tape';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,11 @@ type SourceState =
   | { phase: 'idle' }
   | { phase: 'error'; entityId: string; message: string }
   | { phase: 'ready'; entityId: string; data: SensorHistorySourceResponse };
+
+type RelatedCostState = {
+  requestKey: string;
+  cost: MeasuredTapeCost;
+};
 
 const emptySources: ImportedSensorSummary[] = [];
 
@@ -90,6 +96,191 @@ function costIdentity(source: ImportedSensorSummary) {
   };
 }
 
+type ShellyMeterIdentity = {
+  meter: string;
+  phase: 'A' | 'B' | 'C' | null;
+};
+
+function shellyEnergyIdentity(entityId: string): ShellyMeterIdentity | null {
+  const match = entityId.match(
+    /^sensor\.shellypro3em_([a-f0-9]+)(?:_phase_([abc]))?_energy$/i,
+  );
+  if (!match) return null;
+  const phase = match[2]?.toUpperCase();
+  return {
+    meter: match[1].toLowerCase(),
+    phase: phase === 'A' || phase === 'B' || phase === 'C' ? phase : null,
+  };
+}
+
+function shellyCostIdentity(entityId: string): ShellyMeterIdentity | null {
+  const match = entityId.match(
+    /^sensor\.shellypro3em_([a-f0-9]+)(?:_phase_([abc]))?_energy_cost$/i,
+  );
+  if (!match) return null;
+  const phase = match[2]?.toUpperCase();
+  return {
+    meter: match[1].toLowerCase(),
+    phase: phase === 'A' || phase === 'B' || phase === 'C' ? phase : null,
+  };
+}
+
+type RelatedCostSources = {
+  costSources: ImportedSensorSummary[];
+  phaseEnergySources: ImportedSensorSummary[];
+  detail: string;
+};
+
+type MeterSource = {
+  source: ImportedSensorSummary;
+  identity: ShellyMeterIdentity;
+};
+
+function isRecordedCostSource(source: ImportedSensorSummary) {
+  return (
+    isPoundSterling(source.unit) &&
+    source.aggregation === 'daily_total' &&
+    source.quality === 'available' &&
+    source.pointCount > 0
+  );
+}
+
+function isRecordedEnergySource(source: ImportedSensorSummary) {
+  return (
+    source.aggregation === 'daily_total' &&
+    source.quality === 'available' &&
+    source.pointCount > 0 &&
+    (source.unitClass?.trim().toLowerCase() === 'energy' ||
+      source.unit?.trim().toLowerCase() === 'kwh')
+  );
+}
+
+function costSourcesForEnergy(
+  source: ImportedSensorSummary | null,
+  sources: ImportedSensorSummary[],
+): RelatedCostSources | null {
+  if (!source || costIdentity(source)) return null;
+  const energy = shellyEnergyIdentity(source.entityId);
+  if (!energy || !isRecordedEnergySource(source)) return null;
+
+  const matching: MeterSource[] = [];
+  for (const candidate of sources) {
+    const identity = shellyCostIdentity(candidate.entityId);
+    if (identity?.meter === energy.meter && isRecordedCostSource(candidate)) {
+      matching.push({ source: candidate, identity });
+    }
+  }
+
+  if (energy.phase) {
+    const phase = matching.find(
+      (candidate) => candidate.identity.phase === energy.phase,
+    );
+    return phase
+      ? {
+          costSources: [phase.source],
+          phaseEnergySources: [],
+          detail: `Phase ${energy.phase}`,
+        }
+      : null;
+  }
+
+  const meterTotal = matching.find(
+    (candidate) => candidate.identity.phase === null,
+  );
+  if (meterTotal) {
+    return {
+      costSources: [meterTotal.source],
+      phaseEnergySources: [],
+      detail: 'Matched meter',
+    };
+  }
+
+  const phaseNames = ['A', 'B', 'C'] as const;
+  const costSources: ImportedSensorSummary[] = [];
+  const phaseEnergySources: ImportedSensorSummary[] = [];
+  for (const phase of phaseNames) {
+    const matchingCost = matching.find(
+      (candidate) => candidate.identity.phase === phase,
+    );
+    const matchingEnergy = sources.find((candidate) => {
+      const identity = shellyEnergyIdentity(candidate.entityId);
+      return (
+        identity?.meter === energy.meter &&
+        identity.phase === phase &&
+        isRecordedEnergySource(candidate)
+      );
+    });
+    if (!matchingCost || !matchingEnergy) return null;
+    costSources.push(matchingCost.source);
+    phaseEnergySources.push(matchingEnergy);
+  }
+
+  return {
+    costSources,
+    phaseEnergySources,
+    detail: 'Phase A + B + C',
+  };
+}
+
+function completeDailyTotals(daysBySource: ImportedSensorDay[][]) {
+  if (!daysBySource.length) return new Map<string, number>();
+  const daily = new Map<string, { count: number; value: number }>();
+  for (const days of daysBySource) {
+    const seen = new Set<string>();
+    for (const day of days) {
+      if (seen.has(day.date) || !Number.isFinite(day.value)) continue;
+      seen.add(day.date);
+      const current = daily.get(day.date) ?? { count: 0, value: 0 };
+      current.count += 1;
+      current.value += day.value;
+      daily.set(day.date, current);
+    }
+  }
+  return new Map(
+    [...daily.entries()]
+      .filter(([, value]) => value.count === daysBySource.length)
+      .map(([date, value]) => [
+        date,
+        Math.round((value.value + Number.EPSILON) * 1000) / 1000,
+      ]),
+  );
+}
+
+function matchedCostPoints(
+  costDaysBySource: ImportedSensorDay[][],
+  selectedEnergyDays: ImportedSensorDay[],
+  phaseEnergyDaysBySource: ImportedSensorDay[][],
+) {
+  const costsByDate = completeDailyTotals(costDaysBySource);
+  const selectedEnergyByDate = new Map(
+    selectedEnergyDays
+      .filter((day) => Number.isFinite(day.value))
+      .map((day) => [day.date, day.value]),
+  );
+  const phaseEnergyByDate = phaseEnergyDaysBySource.length
+    ? completeDailyTotals(phaseEnergyDaysBySource)
+    : null;
+
+  return [...costsByDate.entries()]
+    .filter(([date]) => {
+      const selectedEnergy = selectedEnergyByDate.get(date);
+      if (selectedEnergy == null) return false;
+      if (!phaseEnergyByDate) return true;
+      const phaseEnergy = phaseEnergyByDate.get(date);
+      return (
+        phaseEnergy != null && Math.abs(phaseEnergy - selectedEnergy) <= 0.01
+      );
+    })
+    .map(([date, value]) => ({
+      date,
+      value,
+      minimum: null,
+      maximum: null,
+      sampleCount: 0,
+    }))
+    .sort((left, right) => left.date.localeCompare(right.date));
+}
+
 function displaySourceLabel(source: ImportedSensorSummary) {
   return costIdentity(source)?.label ?? source.label;
 }
@@ -139,9 +330,11 @@ function isSourceHistory(value: unknown): value is SensorHistorySourceResponse {
 function TapeForSource({
   source,
   days,
+  cost,
 }: {
   source: ImportedSensorSummary;
   days: ImportedSensorDay[];
+  cost?: MeasuredTapeCost;
 }) {
   const points: MeasuredTapePoint[] = days.map((day) => ({
     date: day.date,
@@ -159,6 +352,7 @@ function TapeForSource({
         aggregation: source.aggregation,
         points,
       }}
+      cost={cost}
     />
   );
 }
@@ -284,6 +478,8 @@ export function ImportedSensorBreakdown({
     string | null
   >(null);
   const [history, setHistory] = useState<SourceState>({ phase: 'idle' });
+  const [relatedCostHistory, setRelatedCostHistory] =
+    useState<RelatedCostState | null>(null);
 
   const loadOverview = useCallback(async () => {
     try {
@@ -338,6 +534,15 @@ export function ImportedSensorBreakdown({
       null
     );
   }, [controlledEntityId, localSelectedEntityId, primaryEntityId, sources]);
+  const selected = useMemo(
+    () =>
+      sources.find((source) => source.entityId === resolvedEntityId) ?? null,
+    [resolvedEntityId, sources],
+  );
+  const relatedCostSources = useMemo(
+    () => costSourcesForEnergy(selected, sources),
+    [selected, sources],
+  );
 
   useEffect(() => {
     if (!resolvedEntityId) return;
@@ -375,11 +580,92 @@ export function ImportedSensorBreakdown({
     };
   }, [accessToken, historyEndpoint, resolvedEntityId]);
 
-  const selected = useMemo(
-    () =>
-      sources.find((source) => source.entityId === resolvedEntityId) ?? null,
-    [resolvedEntityId, sources],
-  );
+  const selectedDaily =
+    history.phase === 'ready' &&
+    history.entityId === resolvedEntityId &&
+    history.data.status === 'available' &&
+    history.data.daily
+      ? history.data.daily
+      : null;
+  const costRequestKey =
+    resolvedEntityId && relatedCostSources && selectedDaily
+      ? [
+          resolvedEntityId,
+          ...relatedCostSources.costSources.map((source) => source.entityId),
+          ...relatedCostSources.phaseEnergySources.map(
+            (source) => source.entityId,
+          ),
+        ].join('|')
+      : null;
+
+  useEffect(() => {
+    if (!relatedCostSources || !selectedDaily || !costRequestKey) return;
+
+    let cancelled = false;
+    const loadDaily = async (source: ImportedSensorSummary) => {
+      const response = await fetch(
+        `${historyEndpoint}/${encodeURIComponent(source.entityId)}`,
+        {
+          cache: 'no-store',
+          headers: accessToken
+            ? { Authorization: `Bearer ${accessToken}` }
+            : undefined,
+        },
+      );
+      const payload: unknown = await response.json();
+      if (
+        !response.ok ||
+        !isSourceHistory(payload) ||
+        payload.status !== 'available' ||
+        !payload.daily
+      ) {
+        throw new Error('Related cost history is unavailable.');
+      }
+      return payload.daily;
+    };
+
+    void Promise.all(
+      [
+        ...relatedCostSources.costSources,
+        ...relatedCostSources.phaseEnergySources,
+      ].map(loadDaily),
+    )
+      .then((allDays) => {
+        const costSourceCount = relatedCostSources.costSources.length;
+        const points = matchedCostPoints(
+          allDays.slice(0, costSourceCount),
+          selectedDaily,
+          allDays.slice(costSourceCount),
+        );
+        if (!points.length) return;
+        if (!cancelled) {
+          setRelatedCostHistory({
+            requestKey: costRequestKey,
+            cost: {
+              label: 'Recorded cost',
+              detail: relatedCostSources.detail,
+              points,
+            },
+          });
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    accessToken,
+    costRequestKey,
+    historyEndpoint,
+    relatedCostSources,
+    selectedDaily,
+  ]);
+
+  const relatedCost =
+    relatedCostHistory?.requestKey === costRequestKey
+      ? relatedCostHistory.cost
+      : undefined;
   const grouped = useMemo(() => groupedSources(sources), [sources]);
   const summaryGroup =
     overview.phase === 'ready'
@@ -507,6 +793,7 @@ export function ImportedSensorBreakdown({
               <TapeForSource
                 source={history.data.source}
                 days={history.data.daily}
+                cost={relatedCost}
               />
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <SourceMetric

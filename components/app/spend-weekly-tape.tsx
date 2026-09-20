@@ -541,6 +541,12 @@ export type MeasuredTapeSubject = {
   points: MeasuredTapePoint[];
 };
 
+export type MeasuredTapeCost = {
+  label: string;
+  detail: string;
+  points: MeasuredTapePoint[];
+};
+
 type MeasuredWeek = {
   id: string;
   start: string;
@@ -661,9 +667,11 @@ function buildMeasuredWeeks(subject: MeasuredTapeSubject) {
  */
 export function MeasuredWeeklyTape({
   subject,
+  cost,
   className,
 }: {
   subject: MeasuredTapeSubject;
+  cost?: MeasuredTapeCost;
   className?: string;
 }) {
   const weeks = buildMeasuredWeeks(subject);
@@ -678,6 +686,18 @@ export function MeasuredWeeklyTape({
     Math.min(activeIndex ?? latestIndex, latestIndex),
   );
   const active = weeks[resolvedActiveIndex] ?? weeks[latestIndex];
+  const costWeeks = cost
+    ? buildMeasuredWeeks({
+        id: `${subject.id}:cost`,
+        name: cost.label,
+        unit: 'GBP',
+        aggregation: 'daily_total',
+        points: cost.points,
+      })
+    : [];
+  const focusCost = active
+    ? (costWeeks.find((week) => week.start === active.start) ?? null)
+    : null;
 
   const recentPoints = [...subject.points]
     .filter((point) => /^\d{4}-\d{2}-\d{2}$/.test(point.date))
@@ -832,14 +852,32 @@ export function MeasuredWeeklyTape({
               {dateRange(active.start, active.end)}
             </p>
           </div>
-          {range ? (
+          {focusCost || range ? (
             <div className="max-w-[9rem] text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/40">
-                Daily range
-              </p>
-              <p className="mt-1 text-[11px] leading-4 tabular-nums text-white/70">
-                {range}
-              </p>
+              {focusCost ? (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#d9b779]">
+                    {cost?.label}
+                  </p>
+                  <p className="mt-1 text-[1.45rem] font-semibold leading-none tracking-[-0.04em] tabular-nums text-white">
+                    {formatMeasurement(focusCost.value, 'GBP')}
+                  </p>
+                  <p className="mt-1 text-[10px] leading-4 text-white/50">
+                    {cost?.detail} · {focusCost.dayCount} matching day
+                    {focusCost.dayCount === 1 ? '' : 's'}
+                  </p>
+                </div>
+              ) : null}
+              {range ? (
+                <div className={focusCost ? 'mt-3' : undefined}>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/40">
+                    Daily range
+                  </p>
+                  <p className="mt-1 text-[11px] leading-4 tabular-nums text-white/70">
+                    {range}
+                  </p>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
