@@ -380,10 +380,14 @@ function TapeForSource({
   source,
   days,
   cost,
+  liveEndpoint,
+  liveAccessToken,
 }: {
   source: ImportedSensorSummary;
   days: ImportedSensorDay[];
   cost?: MeasuredTapeCost;
+  liveEndpoint?: string;
+  liveAccessToken?: string;
 }) {
   const points: MeasuredTapePoint[] = days.map((day) => ({
     date: day.date,
@@ -403,6 +407,8 @@ function TapeForSource({
         currentWeek: source.currentWeek,
       }}
       cost={cost}
+      liveEndpoint={liveEndpoint}
+      liveAccessToken={liveAccessToken}
     />
   );
 }
@@ -510,6 +516,8 @@ export function ImportedSensorBreakdown({
   className,
   historyEndpoint = '/api/sensor-history',
   accessToken,
+  liveEndpoint,
+  liveAccessToken,
   selectedEntityId: controlledEntityId,
   onSelectEntityId,
   parameterPlacement = 'before-reading',
@@ -520,6 +528,8 @@ export function ImportedSensorBreakdown({
   className?: string;
   historyEndpoint?: string;
   accessToken?: string;
+  liveEndpoint?: string;
+  liveAccessToken?: string;
   selectedEntityId?: string;
   onSelectEntityId?: (entityId: string) => void;
   parameterPlacement?: 'before-reading' | 'after-reading';
@@ -850,6 +860,8 @@ export function ImportedSensorBreakdown({
                 source={history.data.source}
                 days={history.data.daily}
                 cost={tapeCost}
+                liveEndpoint={liveEndpoint}
+                liveAccessToken={liveAccessToken}
               />
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <SourceMetric

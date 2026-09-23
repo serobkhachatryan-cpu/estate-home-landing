@@ -19,6 +19,10 @@ import {
   type SpendTapeWeek,
   type WeekEfficiency,
 } from '@/lib/fixtures/spend-tape';
+import type {
+  LiveSensorReading,
+  LiveSensorSnapshotResponse,
+} from '@/lib/live-sensor-types';
 import { cn } from '@/lib/utils';
 
 const WEEK_HEIGHT = 36;
@@ -598,6 +602,42 @@ function formatMeasurement(value: number, unit: string | null) {
   return unit ? `${formatted} ${unit}` : formatted;
 }
 
+function isLiveSnapshot(value: unknown): value is LiveSensorSnapshotResponse {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    ((value as { status?: unknown }).status === 'available' ||
+      (value as { status?: unknown }).status === 'not_configured') &&
+    Array.isArray((value as { readings?: unknown }).readings)
+  );
+}
+
+function formatLiveMeasurement(reading: LiveSensorReading) {
+  const value = Number(reading.state);
+  if (!Number.isFinite(value)) {
+    return reading.unit ? `${reading.state} ${reading.unit}` : reading.state;
+  }
+  return formatMeasurement(value, reading.unit);
+}
+
+function formatLiveTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'time unavailable';
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function liveReadingIsStale(reading: LiveSensorReading) {
+  const observedAt = new Date(reading.observedAt).getTime();
+  return (
+    !Number.isFinite(observedAt) || Date.now() - observedAt > 10 * 60 * 1000
+  );
+}
+
 function calendarDate(value: string) {
   return new Date(`${value}T12:00:00.000Z`);
 }
@@ -707,10 +747,14 @@ export function MeasuredWeeklyTape({
   subject,
   cost,
   className,
+  liveEndpoint,
+  liveAccessToken,
 }: {
   subject: MeasuredTapeSubject;
   cost?: MeasuredTapeCost;
   className?: string;
+  liveEndpoint?: string;
+  liveAccessToken?: string;
 }) {
   const weeks = buildMeasuredWeeks(subject);
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -719,6 +763,9 @@ export function MeasuredWeeklyTape({
   const latestIndex = Math.max(0, weeks.length - 1);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [edgePad, setEdgePad] = useState(100);
+  const [liveReading, setLiveReading] = useState<LiveSensorReading | null>(
+    null,
+  );
   const resolvedActiveIndex = Math.max(
     0,
     Math.min(activeIndex ?? latestIndex, latestIndex),
@@ -759,6 +806,44 @@ export function MeasuredWeeklyTape({
       : recentTotal / Math.max(recentPoints.length, 1);
 
   const maxValue = Math.max(...weeks.map((week) => Math.abs(week.value)), 1);
+
+  const loadLiveReading = useCallback(async () => {
+    if (!liveEndpoint) {
+      setLiveReading(null);
+      return;
+    }
+    try {
+      const separator = liveEndpoint.includes('?') ? '&' : '?';
+      const response = await fetch(
+        `${liveEndpoint}${separator}entityId=${encodeURIComponent(subject.id)}`,
+        {
+          cache: 'no-store',
+          headers: liveAccessToken
+            ? { Authorization: `Bearer ${liveAccessToken}` }
+            : undefined,
+        },
+      );
+      const payload: unknown = await response.json();
+      if (!response.ok || !isLiveSnapshot(payload)) throw new Error('Unavailable');
+      setLiveReading(
+        payload.status === 'available'
+          ? (payload.readings.find((reading) => reading.entityId === subject.id) ??
+              null)
+          : null,
+      );
+    } catch {
+      setLiveReading(null);
+    }
+  }, [liveAccessToken, liveEndpoint, subject.id]);
+
+  useEffect(() => {
+    const initial = window.setTimeout(() => void loadLiveReading(), 0);
+    const interval = window.setInterval(() => void loadLiveReading(), 60_000);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(interval);
+    };
+  }, [loadLiveReading]);
 
   const syncFromScroll = useCallback(() => {
     const node = scrollerRef.current;
@@ -937,6 +1022,35 @@ export function MeasuredWeeklyTape({
             </div>
           ) : null}
         </div>
+
+        {liveReading ? (
+          <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    'size-1.5 shrink-0 rounded-full',
+                    liveReadingIsStale(liveReading)
+                      ? 'bg-[#d9b779]'
+                      : 'bg-[#9dcea6]',
+                  )}
+                  aria-hidden
+                />
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#d9b779]">
+                  {liveReadingIsStale(liveReading)
+                    ? 'Last live snapshot'
+                    : 'Live now · Home Assistant'}
+                </p>
+              </div>
+              <p className="mt-1 truncate text-[10px] text-white/50">
+                HA updated {formatLiveTime(liveReading.stateUpdatedAt)}
+              </p>
+            </div>
+            <p className="shrink-0 text-right text-[1.2rem] font-semibold leading-none tracking-[-0.04em] tabular-nums text-white">
+              {formatLiveMeasurement(liveReading)}
+            </p>
+          </div>
+        ) : null}
       </div>
 
       <div className="px-3 pb-1">
