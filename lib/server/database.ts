@@ -163,6 +163,19 @@ export async function ensureSchema() {
           )`,
         ),
         db.prepare(
+          `CREATE TABLE IF NOT EXISTS home_assistant_live_states (
+            owner_ename TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            group_id TEXT NOT NULL,
+            label TEXT NOT NULL,
+            state TEXT NOT NULL,
+            unit TEXT,
+            state_updated_at TEXT NOT NULL,
+            observed_at TEXT NOT NULL,
+            PRIMARY KEY (owner_ename, entity_id)
+          )`,
+        ),
+        db.prepare(
           `CREATE TABLE IF NOT EXISTS properties (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -231,6 +244,10 @@ export async function ensureSchema() {
         db.prepare(
           `CREATE INDEX IF NOT EXISTS idx_investor_shares_owner_expires
            ON investor_shares(owner_ename, expires_at)`,
+        ),
+        db.prepare(
+          `CREATE INDEX IF NOT EXISTS idx_home_assistant_live_states_owner_group
+           ON home_assistant_live_states(owner_ename, group_id, label)`,
         ),
       ])
       .then(async () => {

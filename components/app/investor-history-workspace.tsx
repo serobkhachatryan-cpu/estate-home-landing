@@ -45,8 +45,9 @@ export function InvestorHistoryWorkspace() {
             Recorded home systems
           </h1>
           <p className="mt-2 text-[14px] leading-5 text-[#52626c]">
-            Historical Home Assistant statistics through 19 Sept 2026. This is
-            not live telemetry; values without a complete record are shown as zero.
+            Historical Home Assistant statistics through 19 Sept 2026. Current
+            states, when available, are separately marked as live telemetry;
+            values without a complete historical record are shown as zero.
           </p>
         </header>
 
@@ -66,15 +67,17 @@ export function InvestorHistoryWorkspace() {
           ) : (
             <ImportedSystemsWorkspace
               historyEndpoint="/api/investor/sensor-history"
+              liveEndpoint="/api/investor/live-sensors"
               accessToken={access.token}
             />
           )}
         </div>
 
         <footer className="mt-8 border-t border-[#e0d8cb] pt-4 text-[11px] leading-5 text-[#6b777f]">
-          Read-only historical view. It contains normalized daily measurements
-          only; no Home Assistant access, credentials, recordings, or controls
-          are available here.
+          Read-only view. It contains normalized daily measurements and, when
+          the owner enables it, an allowlisted current-state snapshot. No Home
+          Assistant access, credentials, recordings, or controls are available
+          here.
         </footer>
       </main>
     </div>

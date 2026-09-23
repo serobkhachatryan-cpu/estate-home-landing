@@ -214,6 +214,34 @@ export const investorShares = sqliteTable(
   ],
 );
 
+/**
+ * The local Home Assistant bridge writes a replacement snapshot of explicitly
+ * allowlisted sensor states. This is intentionally current-state storage, not
+ * a second Recorder: no credentials, events, service calls or raw history are
+ * retained in Oriel.
+ */
+export const homeAssistantLiveStates = sqliteTable(
+  'home_assistant_live_states',
+  {
+    ownerEname: text('owner_ename').notNull(),
+    entityId: text('entity_id').notNull(),
+    groupId: text('group_id').notNull(),
+    label: text('label').notNull(),
+    state: text('state').notNull(),
+    unit: text('unit'),
+    stateUpdatedAt: text('state_updated_at').notNull(),
+    observedAt: text('observed_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.ownerEname, table.entityId] }),
+    index('idx_home_assistant_live_states_owner_group').on(
+      table.ownerEname,
+      table.groupId,
+      table.label,
+    ),
+  ],
+);
+
 export const properties = sqliteTable('properties', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),

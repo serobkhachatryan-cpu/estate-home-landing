@@ -68,6 +68,54 @@ A configured energy tariff may produce a clearly labelled estimate. It is not
 an invoice, and water or electricity spend is not shown as fact until billing
 records or an approved tariff model are imported.
 
+## Tailnet live-state bridge
+
+The public Oriel service cannot and must not reach a private Home Assistant
+unit over the owner's Tailnet. For a Tailnet unit, run the owner-operated local
+bridge on a Mac that is already on that Tailnet. It uses Home Assistant's REST
+API to read only explicit `sensor.*` states, then sends a small replacement
+snapshot to Oriel over HTTPS. Oriel stores the latest values only; it does not
+receive the Home Assistant URL, access token, Recorder database, events, or
+device controls.
+
+Create a **separate non-admin Home Assistant user** for Oriel. In that user's
+profile, create a Long-Lived Access Token, which Home Assistant documents as a
+Bearer token for its REST API. Keep it in the Mac login Keychain; never put it
+in a Git repository, a shared chat, an app URL, or the public Oriel runtime.
+The bridge itself has no service endpoint code and makes only
+`GET /api/states/<entity_id>` requests. Its configuration is an allowlist: it
+cannot enumerate or operate the home.
+
+1. Copy `config/oriel-home-assistant-live.example.json` to a local,
+   Git-ignored location and retain only sensors the property owner approved.
+   Set its `ownerEName` to the owner that created the investor link.
+2. Store the two secrets in the Mac login Keychain (examples use distinct
+   service names and do not print values):
+
+   ```bash
+   security add-generic-password -U -a "$USER" -s OrielHomeAssistantToken -w
+   security add-generic-password -U -a "$USER" -s OrielLiveBridgeToken -w
+   ```
+
+3. Run a one-time sync without exposing either secret in the shell history:
+
+   ```bash
+   ORIEL_HOME_ASSISTANT_TOKEN="$(security find-generic-password -a "$USER" -s OrielHomeAssistantToken -w)" \
+   ORIEL_LIVE_BRIDGE_TOKEN="$(security find-generic-password -a "$USER" -s OrielLiveBridgeToken -w)" \
+   npm run sync:home-assistant-live -- --config /absolute/path/oriel-home-assistant-live.json
+   ```
+
+Run that same command from a local scheduler every 1–5 minutes after the
+one-time check succeeds. The bridge fails closed: if any configured sensor
+cannot be read, it sends no partial snapshot. An investor sees the current
+state in a visibly separate panel; values older than ten minutes are marked as
+not currently live, and historical graphs remain historical.
+
+`ORIEL_LIVE_BRIDGE_TOKEN` is a separate hosted runtime secret used solely by
+`/api/internal/live-sensor-snapshot`. Rotate it by changing both the Sites
+secret and the Mac Keychain entry. Revoke the Home Assistant Long-Lived Access
+Token immediately if the Mac or integration account is no longer trusted.
+
 ### Full historical sensor inventory
 
 For a property recorder snapshot, use the all-sensor importer to retain every

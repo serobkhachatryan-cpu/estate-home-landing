@@ -1,0 +1,23 @@
+{
+  "homeAssistantUrl": "http://homeassistant.tailnet-name.ts.net:8123",
+  "orielUrl": "https://oriel-home-operations.palisandr.chatgpt.site",
+  "ownerEName": "@replace-with-the-owner-ename",
+  "sensors": [
+    {
+      "entityId": "sensor.shellypro3em_9454c5b9da04_energy",
+      "groupId": "power"
+    },
+    {
+      "entityId": "sensor.house_water_1_total_l",
+      "groupId": "water"
+    },
+    {
+      "entityId": "sensor.aldworth_nvr_storage_utilization",
+      "groupId": "security"
+    },
+    {
+      "entityId": "sensor.starlink_ping_2",
+      "groupId": "network"
+    }
+  ]
+}

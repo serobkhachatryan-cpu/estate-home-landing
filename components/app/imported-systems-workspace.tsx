@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { LiveHomeAssistantReadings } from '@/components/app/live-home-assistant-readings';
 import { ImportedSensorBreakdown } from '@/components/app/imported-sensor-breakdown';
+import type { LiveSensorGroupId } from '@/lib/live-sensor-types';
 import type {
   ImportedSensorGroup,
   SensorHistoryOverviewResponse,
@@ -64,9 +66,11 @@ function isOverview(value: unknown): value is SensorHistoryOverviewResponse {
  */
 export function ImportedSystemsWorkspace({
   historyEndpoint = '/api/sensor-history',
+  liveEndpoint = '/api/live-sensors',
   accessToken,
 }: {
   historyEndpoint?: string;
+  liveEndpoint?: string;
   accessToken?: string;
 }) {
   const [state, setState] = useState<LoadState>({ phase: 'loading' });
@@ -153,6 +157,12 @@ export function ImportedSystemsWorkspace({
           complete daily record.
         </p>
       </section>
+
+      <LiveHomeAssistantReadings
+        groupId={selected.id as LiveSensorGroupId}
+        endpoint={liveEndpoint}
+        accessToken={accessToken}
+      />
 
       <ImportedSensorBreakdown
         key={selected.id}
