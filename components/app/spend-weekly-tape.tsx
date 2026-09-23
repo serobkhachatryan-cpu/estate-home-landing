@@ -766,6 +766,9 @@ export function MeasuredWeeklyTape({
   const [liveReading, setLiveReading] = useState<LiveSensorReading | null>(
     null,
   );
+  const liveRowIndex = liveReading ? weeks.length : -1;
+  const scrollRowCount = weeks.length + (liveReading ? 1 : 0);
+  const scrollLatestIndex = liveReading ? liveRowIndex : latestIndex;
   const resolvedActiveIndex = Math.max(
     0,
     Math.min(activeIndex ?? latestIndex, latestIndex),
@@ -852,10 +855,13 @@ export function MeasuredWeeklyTape({
       node.scrollTop,
       node.clientHeight,
       edgePadRef.current,
-      weeks.length,
+      scrollRowCount,
     );
-    setActiveIndex((previous) => (previous === next ? previous : next));
-  }, [weeks.length]);
+    const nextWeekIndex = Math.min(next, latestIndex);
+    setActiveIndex((previous) =>
+      previous === nextWeekIndex ? previous : nextWeekIndex,
+    );
+  }, [latestIndex, scrollRowCount, weeks.length]);
 
   const onScroll = useCallback(() => {
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
@@ -866,14 +872,14 @@ export function MeasuredWeeklyTape({
     (index: number, behavior: ScrollBehavior = 'smooth') => {
       const node = scrollerRef.current;
       if (!node || !weeks.length) return;
-      const clamped = Math.max(0, Math.min(weeks.length - 1, index));
+      const clamped = Math.max(0, Math.min(scrollLatestIndex, index));
       node.scrollTo({
         top: scrollTopForIndex(clamped, node.clientHeight, edgePadRef.current),
         behavior,
       });
-      setActiveIndex(clamped);
+      setActiveIndex(Math.min(clamped, latestIndex));
     },
-    [weeks.length],
+    [latestIndex, scrollLatestIndex, weeks.length],
   );
 
   useEffect(() => {
@@ -887,7 +893,7 @@ export function MeasuredWeeklyTape({
       edgePadRef.current = pad;
       setEdgePad(pad);
       node.scrollTop = scrollTopForIndex(
-        Math.max(0, weeks.length - 1),
+        scrollLatestIndex,
         node.clientHeight,
         pad,
       );
@@ -899,7 +905,7 @@ export function MeasuredWeeklyTape({
       observer.disconnect();
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
-  }, [weeks.length]);
+  }, [scrollLatestIndex, weeks.length]);
 
   if (!weeks.length || !active) {
     return (
@@ -1023,39 +1029,11 @@ export function MeasuredWeeklyTape({
           ) : null}
         </div>
 
-        {liveReading ? (
-          <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    'size-1.5 shrink-0 rounded-full',
-                    liveReadingIsStale(liveReading)
-                      ? 'bg-[#d9b779]'
-                      : 'bg-[#9dcea6]',
-                  )}
-                  aria-hidden
-                />
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#d9b779]">
-                  {liveReadingIsStale(liveReading)
-                    ? 'Last live snapshot'
-                    : 'Live now · Home Assistant'}
-                </p>
-              </div>
-              <p className="mt-1 truncate text-[10px] text-white/50">
-                HA updated {formatLiveTime(liveReading.stateUpdatedAt)}
-              </p>
-            </div>
-            <p className="shrink-0 text-right text-[1.2rem] font-semibold leading-none tracking-[-0.04em] tabular-nums text-white">
-              {formatLiveMeasurement(liveReading)}
-            </p>
-          </div>
-        ) : null}
       </div>
 
       <div className="px-3 pb-1">
         <p className="mb-1 px-1 text-[9px] font-medium uppercase tracking-[0.12em] text-white/35">
-          Weeks · current week is live · scroll to focus a period
+          Recorded weeks + current live state · scroll to focus a period
         </p>
         <div className="relative">
           <div
@@ -1077,7 +1055,7 @@ export function MeasuredWeeklyTape({
           >
             <div
               style={{
-                height: edgePad * 2 + weeks.length * WEEK_HEIGHT,
+                height: edgePad * 2 + scrollRowCount * WEEK_HEIGHT,
                 paddingTop: edgePad,
                 paddingBottom: edgePad,
               }}
@@ -1092,6 +1070,7 @@ export function MeasuredWeeklyTape({
                   onActivate={() => jumpToIndex(index)}
                 />
               ))}
+              {liveReading ? <LiveCurrentRow reading={liveReading} /> : null}
             </div>
           </div>
         </div>
@@ -1099,7 +1078,9 @@ export function MeasuredWeeklyTape({
 
       <div className="flex gap-1.5 border-t border-white/10 px-3 py-2">
         <TapeButton onClick={() => jumpToIndex(0)}>Oldest</TapeButton>
-        <TapeButton onClick={() => jumpToIndex(latestIndex)}>Latest</TapeButton>
+        <TapeButton onClick={() => jumpToIndex(scrollLatestIndex)}>
+          Latest
+        </TapeButton>
       </div>
     </section>
   );
@@ -1172,5 +1153,45 @@ function MeasuredWeekRow({
         {formatMeasurement(week.value, unit)}
       </span>
     </button>
+  );
+}
+
+/**
+ * A current state occupies the same chronological ribbon as the recorded
+ * weeks, but intentionally has no comparative bar. A cumulative meter state
+ * (for example kWh since installation) is not a weekly consumption total.
+ */
+function LiveCurrentRow({ reading }: { reading: LiveSensorReading }) {
+  const stale = liveReadingIsStale(reading);
+  return (
+    <div
+      aria-label={`${stale ? 'Last live snapshot' : 'Live now'}: ${formatLiveMeasurement(reading)}`}
+      className="flex w-full snap-center items-center gap-2 bg-[#9dcea6]/12 px-1 ring-1 ring-inset ring-[#9dcea6]/30"
+      style={{ height: WEEK_HEIGHT }}
+    >
+      <span className="w-[4.75rem] shrink-0 text-left leading-tight">
+        <span className="flex items-center gap-1 text-[10px] font-semibold text-[#9dcea6]">
+          <span
+            className={cn(
+              'size-1.5 shrink-0 rounded-full',
+              stale ? 'bg-[#d9b779]' : 'bg-[#9dcea6]',
+            )}
+            aria-hidden
+          />
+          {stale ? 'Last live' : 'Live now'}
+        </span>
+        <span className="mt-0.5 block text-[8px] tabular-nums text-white/45">
+          HA {formatLiveTime(reading.stateUpdatedAt)}
+        </span>
+      </span>
+      <span
+        className="h-px flex-1 bg-[#9dcea6]/35"
+        style={{ maxWidth: BAR_TRACK + 24 }}
+        aria-hidden
+      />
+      <span className="ml-auto shrink-0 text-[12px] font-semibold tabular-nums text-white">
+        {formatLiveMeasurement(reading)}
+      </span>
+    </div>
   );
 }
