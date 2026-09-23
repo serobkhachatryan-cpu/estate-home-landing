@@ -11,6 +11,7 @@
     "import:home-assistant-history": "node scripts/import-home-assistant-history.mjs",
     "import:home-assistant-sensors": "node scripts/import-home-assistant-sensors.mjs",
     "sync:home-assistant-live": "node scripts/oriel-home-assistant-live-bridge.mjs",
+    "sync:imported-home-assistant-live": "node scripts/sync-imported-home-assistant-live.mjs",
     "transfer:investor-snapshot": "node scripts/transfer-normalized-investor-snapshot.mjs",
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",

@@ -43,16 +43,26 @@ function isStale(value: string) {
   );
 }
 
+function formatState(value: string) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return value;
+  return new Intl.NumberFormat('en-GB', {
+    maximumFractionDigits: 3,
+  }).format(number);
+}
+
 /**
  * A small, separate live panel so a current Home Assistant state cannot be
  * mistaken for the normalized historical series and its recorded costs.
  */
 export function LiveHomeAssistantReadings({
   groupId,
+  entityId,
   endpoint = '/api/live-sensors',
   accessToken,
 }: {
   groupId: LiveSensorGroupId;
+  entityId?: string;
   endpoint?: string;
   accessToken?: string;
 }) {
@@ -63,9 +73,10 @@ export function LiveHomeAssistantReadings({
     async (manual = false) => {
       if (manual) setRefreshing(true);
       try {
-        const separator = endpoint.includes('?') ? '&' : '?';
+        const parameters = new URLSearchParams({ group: groupId });
+        if (entityId) parameters.set('entityId', entityId);
         const response = await fetch(
-          `${endpoint}${separator}group=${encodeURIComponent(groupId)}`,
+          `${endpoint}${endpoint.includes('?') ? '&' : '?'}${parameters.toString()}`,
           {
             cache: 'no-store',
             headers: accessToken
@@ -83,7 +94,7 @@ export function LiveHomeAssistantReadings({
         if (manual) setRefreshing(false);
       }
     },
-    [accessToken, endpoint, groupId],
+    [accessToken, endpoint, entityId, groupId],
   );
 
   useEffect(() => {
@@ -123,7 +134,7 @@ export function LiveHomeAssistantReadings({
               strokeWidth={1.8}
             />
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f7040]">
-              Live Home Assistant
+              Live now · Home Assistant
             </p>
           </div>
           <p className="mt-1 text-[12px] leading-5 text-[#52626c]">
@@ -161,7 +172,7 @@ export function LiveHomeAssistantReadings({
                   {reading.label}
                 </p>
                 <p className="mt-1 text-[1.25rem] font-semibold leading-none tracking-[-0.04em] tabular-nums text-[#153044]">
-                  {reading.state}
+                  {formatState(reading.state)}
                   {reading.unit ? (
                     <span className="ml-1 text-[0.8rem] font-medium tracking-normal text-[#52626c]">
                       {reading.unit}

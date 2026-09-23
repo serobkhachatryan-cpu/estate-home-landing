@@ -83,33 +83,93 @@ export async function replaceLiveSensorSnapshot(
   return observedAt;
 }
 
+/**
+ * A large imported sensor inventory is uploaded in small bridge batches. An
+ * upsert keeps every reported current state without receiving Recorder history
+ * or requiring the browser to contact Home Assistant directly.
+ */
+export async function mergeLiveSensorSnapshot(
+  ownerEName: string,
+  readings: LiveSensorBridgeReading[],
+) {
+  await ensureSchema();
+  const db = database();
+  const observedAt = new Date().toISOString();
+  const statements = readings.map((reading) =>
+    db
+      .prepare(
+        `INSERT INTO home_assistant_live_states (
+          owner_ename, entity_id, group_id, label, state, unit,
+          state_updated_at, observed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(owner_ename, entity_id) DO UPDATE SET
+          group_id = excluded.group_id,
+          label = excluded.label,
+          state = excluded.state,
+          unit = excluded.unit,
+          state_updated_at = excluded.state_updated_at,
+          observed_at = excluded.observed_at`,
+      )
+      .bind(
+        ownerEName,
+        reading.entityId,
+        reading.groupId,
+        reading.label,
+        reading.state,
+        reading.unit,
+        reading.stateUpdatedAt,
+        observedAt,
+      ),
+  );
+  for (let index = 0; index < statements.length; index += 100) {
+    await db.batch(statements.slice(index, index + 100));
+  }
+  return observedAt;
+}
+
+export type LiveSensorSnapshotFilter = {
+  groupId?: LiveSensorGroupId;
+  entityId?: string;
+};
+
 export async function getLiveSensorSnapshot(
   ownerEName: string,
-  groupId?: LiveSensorGroupId,
+  { groupId, entityId }: LiveSensorSnapshotFilter = {},
 ): Promise<LiveSensorSnapshotResponse> {
   await ensureSchema();
   const db = database();
-  const result = await (groupId
+  const result = await (entityId
     ? db
         .prepare(
           `SELECT entity_id, group_id, label, state, unit, state_updated_at,
                   observed_at
            FROM home_assistant_live_states
-           WHERE owner_ename = ? AND group_id = ?
+           WHERE owner_ename = ? AND entity_id = ?
            ORDER BY label, entity_id`,
         )
-        .bind(ownerEName, groupId)
+        .bind(ownerEName, entityId)
         .all<LiveStateRow>()
-    : db
-        .prepare(
-          `SELECT entity_id, group_id, label, state, unit, state_updated_at,
+    : groupId
+      ? db
+          .prepare(
+            `SELECT entity_id, group_id, label, state, unit, state_updated_at,
+                  observed_at
+           FROM home_assistant_live_states
+           WHERE owner_ename = ? AND group_id = ?
+           ORDER BY label, entity_id`,
+          )
+          .bind(ownerEName, groupId)
+          .all<LiveStateRow>()
+      : db
+          .prepare(
+            `SELECT entity_id, group_id, label, state, unit, state_updated_at,
                   observed_at
            FROM home_assistant_live_states
            WHERE owner_ename = ?
            ORDER BY group_id, label, entity_id`,
-        )
-        .bind(ownerEName)
-        .all<LiveStateRow>());
+          )
+          .bind(ownerEName)
+          .all<LiveStateRow>());
   const readings = (result.results ?? []).map(readingFromRow);
   if (!readings.length) {
     return {

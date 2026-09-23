@@ -2,12 +2,14 @@
 
 import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { LiveHomeAssistantReadings } from '@/components/app/live-home-assistant-readings';
 import {
   MeasuredWeeklyTape,
   type MeasuredTapeCost,
   type MeasuredTapePoint,
 } from '@/components/app/spend-weekly-tape';
 import { Button } from '@/components/ui/button';
+import type { LiveSensorGroupId } from '@/lib/live-sensor-types';
 import type {
   ImportedSensorDay,
   ImportedSensorSummary,
@@ -459,6 +461,8 @@ export function ImportedSensorBreakdown({
   className,
   historyEndpoint = '/api/sensor-history',
   accessToken,
+  liveEndpoint = '/api/live-sensors',
+  liveAccessToken,
   selectedEntityId: controlledEntityId,
   onSelectEntityId,
   parameterPlacement = 'before-reading',
@@ -469,6 +473,8 @@ export function ImportedSensorBreakdown({
   className?: string;
   historyEndpoint?: string;
   accessToken?: string;
+  liveEndpoint?: string;
+  liveAccessToken?: string;
   selectedEntityId?: string;
   onSelectEntityId?: (entityId: string) => void;
   parameterPlacement?: 'before-reading' | 'after-reading';
@@ -784,6 +790,13 @@ export function ImportedSensorBreakdown({
               Through {formatDate(selected.dataThrough)}
             </p>
           </div>
+
+          <LiveHomeAssistantReadings
+            groupId={selected.groupId as LiveSensorGroupId}
+            entityId={selected.entityId}
+            endpoint={liveEndpoint}
+            accessToken={liveAccessToken ?? accessToken}
+          />
 
           {history.phase === 'ready' &&
           history.entityId === resolvedEntityId &&

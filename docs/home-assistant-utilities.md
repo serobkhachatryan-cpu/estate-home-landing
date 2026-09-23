@@ -116,6 +116,13 @@ not currently live, and historical graphs remain historical.
 secret and the Mac Keychain entry. Revoke the Home Assistant Long-Lived Access
 Token immediately if the Mac or integration account is no longer trusted.
 
+For the Aldworth investor inventory, `npm run sync:imported-home-assistant-live`
+reads Home Assistant's current `/api/states` response on the Tailnet Mac,
+matches it only to sensor IDs already present in the private Recorder import,
+and writes them in small current-state batches. The investor workspace shows a
+selected parameter's **Live now** reading directly above its historical graph;
+the script sends no recorder rows, events, device configuration or controls.
+
 ### Full historical sensor inventory
 
 For a property recorder snapshot, use the all-sensor importer to retain every

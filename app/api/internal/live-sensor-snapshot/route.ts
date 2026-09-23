@@ -4,6 +4,7 @@ import type { LiveSensorGroupId } from '@/lib/live-sensor-types';
 import { getInvestorShareForRequest } from '@/lib/server/investor-share';
 import {
   isLiveSensorGroupId,
+  mergeLiveSensorSnapshot,
   replaceLiveSensorSnapshot,
   type LiveSensorBridgeReading,
 } from '@/lib/server/live-sensor-states';
@@ -122,10 +123,11 @@ export async function POST(request: Request) {
       throw new Error('Live snapshot payload is invalid.');
     }
     const body = payload as Record<string, unknown>;
+    const mode = body.mode === 'merge' ? 'merge' : 'replace';
     if (!Array.isArray(body.readings) || !body.readings.length) {
       throw new Error('At least one live sensor is required.');
     }
-    if (body.readings.length > 40) {
+    if (body.readings.length > (mode === 'merge' ? 100 : 40)) {
       throw new Error('Too many live sensors were supplied.');
     }
     const readings = body.readings.map(liveReading);
@@ -135,10 +137,11 @@ export async function POST(request: Request) {
     ) {
       throw new Error('Each live sensor must be unique.');
     }
-    const observedAt = await replaceLiveSensorSnapshot(
-      await snapshotOwner(body, request.url),
-      readings,
-    );
+    const owner = await snapshotOwner(body, request.url);
+    const observedAt =
+      mode === 'merge'
+        ? await mergeLiveSensorSnapshot(owner, readings)
+        : await replaceLiveSensorSnapshot(owner, readings);
     return Response.json(
       { status: 'accepted', sensorCount: readings.length, observedAt },
       { headers: { 'Cache-Control': 'no-store' } },
