@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 
 import type { LiveSensorGroupId } from '@/lib/live-sensor-types';
+import { getInvestorShareForRequest } from '@/lib/server/investor-share';
 import {
   isLiveSensorGroupId,
   replaceLiveSensorSnapshot,
@@ -74,6 +75,35 @@ function liveReading(value: unknown): LiveSensorBridgeReading {
   };
 }
 
+async function snapshotOwner(
+  body: Record<string, unknown>,
+  requestUrl: string,
+) {
+  const suppliedOwner =
+    typeof body.ownerEName === 'string' ? body.ownerEName.trim() : '';
+  const suppliedShare =
+    typeof body.investorShare === 'string' ? body.investorShare.trim() : '';
+  if (suppliedOwner && suppliedShare) {
+    throw new Error(
+      'Use either a snapshot owner or an investor share, not both.',
+    );
+  }
+  if (suppliedOwner) return ownerEName(suppliedOwner);
+  if (!suppliedShare) throw new Error('Snapshot owner is required.');
+
+  // A bridge already authorized by its own secret can make a one-time setup
+  // request with an existing investor-link secret. This resolves the same D1
+  // owner mapping that the investor API uses, but never returns the eID or
+  // stores the investor secret in a live snapshot.
+  const share = await getInvestorShareForRequest(
+    new Request(requestUrl, {
+      headers: { Authorization: `Bearer ${suppliedShare}` },
+    }),
+  );
+  if (!share) throw new Error('Investor share is unavailable.');
+  return share.ownerEName;
+}
+
 /**
  * The only hosted ingestion route for the local bridge. It accepts a tiny
  * replacement snapshot of allowed sensor states and is intentionally absent
@@ -106,7 +136,7 @@ export async function POST(request: Request) {
       throw new Error('Each live sensor must be unique.');
     }
     const observedAt = await replaceLiveSensorSnapshot(
-      ownerEName(body.ownerEName),
+      await snapshotOwner(body, request.url),
       readings,
     );
     return Response.json(
