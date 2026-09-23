@@ -176,6 +176,22 @@ export async function ensureSchema() {
           )`,
         ),
         db.prepare(
+          `CREATE TABLE IF NOT EXISTS sensor_history_current_weeks (
+            owner_ename TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            week_start TEXT NOT NULL,
+            value REAL NOT NULL,
+            minimum REAL,
+            maximum REAL,
+            day_count INTEGER NOT NULL CHECK (day_count BETWEEN 1 AND 7),
+            observed_at TEXT NOT NULL,
+            PRIMARY KEY (owner_ename, entity_id),
+            FOREIGN KEY (owner_ename, entity_id)
+              REFERENCES sensor_history_imports(owner_ename, entity_id)
+              ON DELETE CASCADE
+          )`,
+        ),
+        db.prepare(
           `CREATE TABLE IF NOT EXISTS properties (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -248,6 +264,10 @@ export async function ensureSchema() {
         db.prepare(
           `CREATE INDEX IF NOT EXISTS idx_home_assistant_live_states_owner_group
            ON home_assistant_live_states(owner_ename, group_id, label)`,
+        ),
+        db.prepare(
+          `CREATE INDEX IF NOT EXISTS idx_sensor_history_current_weeks_owner_week
+           ON sensor_history_current_weeks(owner_ename, week_start)`,
         ),
       ])
       .then(async () => {

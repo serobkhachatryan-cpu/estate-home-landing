@@ -12,6 +12,7 @@
     "import:home-assistant-sensors": "node scripts/import-home-assistant-sensors.mjs",
     "sync:home-assistant-live": "node scripts/oriel-home-assistant-live-bridge.mjs",
     "sync:imported-home-assistant-live": "node scripts/sync-imported-home-assistant-live.mjs",
+    "sync:imported-home-assistant-current-week": "node scripts/sync-imported-home-assistant-current-week.mjs",
     "transfer:investor-snapshot": "node scripts/transfer-normalized-investor-snapshot.mjs",
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",

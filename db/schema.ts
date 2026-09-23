@@ -192,6 +192,32 @@ export const sensorHistoryDailyPoints = sqliteTable(
 );
 
 /**
+ * One compact, recalculated week-to-date value per imported sensor. This is
+ * not a Recorder mirror: the raw state events remain on the owner's Home
+ * Assistant unit.
+ */
+export const sensorHistoryCurrentWeeks = sqliteTable(
+  'sensor_history_current_weeks',
+  {
+    ownerEname: text('owner_ename').notNull(),
+    entityId: text('entity_id').notNull(),
+    weekStart: text('week_start').notNull(),
+    value: real('value').notNull(),
+    minimum: real('minimum'),
+    maximum: real('maximum'),
+    dayCount: integer('day_count').notNull(),
+    observedAt: text('observed_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.ownerEname, table.entityId] }),
+    index('idx_sensor_history_current_weeks_owner_week').on(
+      table.ownerEname,
+      table.weekStart,
+    ),
+  ],
+);
+
+/**
  * A viewer receives only an opaque bearer secret in a URL fragment. D1 keeps
  * its SHA-256 digest, never the share secret itself.
  */

@@ -6,6 +6,7 @@ import { LiveHomeAssistantReadings } from '@/components/app/live-home-assistant-
 import {
   MeasuredWeeklyTape,
   type MeasuredTapeCost,
+  type MeasuredTapeCurrentWeek,
   type MeasuredTapePoint,
 } from '@/components/app/spend-weekly-tape';
 import { Button } from '@/components/ui/button';
@@ -283,6 +284,54 @@ function matchedCostPoints(
     .sort((left, right) => left.date.localeCompare(right.date));
 }
 
+function matchedCurrentWeekCost(
+  source: ImportedSensorSummary | null,
+  related: RelatedCostSources | null,
+): MeasuredTapeCurrentWeek | null {
+  if (!source?.currentWeek || !related) return null;
+  const costWeeks = related.costSources.map(
+    (candidate) => candidate.currentWeek,
+  );
+  if (costWeeks.some((week) => !week)) return null;
+  const weeks = costWeeks as MeasuredTapeCurrentWeek[];
+  if (
+    weeks.some(
+      (week) =>
+        week.weekStart !== source.currentWeek?.weekStart ||
+        week.dayCount !== source.currentWeek?.dayCount,
+    )
+  ) {
+    return null;
+  }
+
+  if (related.phaseEnergySources.length) {
+    const energyWeeks = related.phaseEnergySources.map(
+      (candidate) => candidate.currentWeek,
+    );
+    if (energyWeeks.some((week) => !week)) return null;
+    const phaseEnergy = (energyWeeks as MeasuredTapeCurrentWeek[]).reduce(
+      (total, week) => total + week.value,
+      0,
+    );
+    if (Math.abs(phaseEnergy - source.currentWeek.value) > 0.01) return null;
+  }
+
+  return {
+    weekStart: source.currentWeek.weekStart,
+    value: weeks.reduce((total, week) => total + week.value, 0),
+    minimum: null,
+    maximum: null,
+    dayCount: source.currentWeek.dayCount,
+    observedAt: weeks.reduce(
+      (latest, week) =>
+        new Date(week.observedAt).getTime() > new Date(latest).getTime()
+          ? week.observedAt
+          : latest,
+      source.currentWeek.observedAt,
+    ),
+  };
+}
+
 function displaySourceLabel(source: ImportedSensorSummary) {
   return costIdentity(source)?.label ?? source.label;
 }
@@ -353,6 +402,7 @@ function TapeForSource({
         unit: source.unit,
         aggregation: source.aggregation,
         points,
+        currentWeek: source.currentWeek,
       }}
       cost={cost}
     />
@@ -390,10 +440,11 @@ function SourceButton({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const primary = source.last7Days ?? source.latest;
+  const primary = source.currentWeek ?? source.last7Days ?? source.latest;
   const displayedLabel = displaySourceLabel(source);
-  const label =
-    source.aggregation === 'daily_total'
+  const label = source.currentWeek
+    ? 'This week · live'
+    : source.aggregation === 'daily_total'
       ? source.last7Days
         ? 'Last 7d'
         : 'Latest'
@@ -672,6 +723,10 @@ export function ImportedSensorBreakdown({
     relatedCostHistory?.requestKey === costRequestKey
       ? relatedCostHistory.cost
       : undefined;
+  const currentCost = matchedCurrentWeekCost(selected, relatedCostSources);
+  const tapeCost = relatedCost
+    ? { ...relatedCost, currentWeek: currentCost }
+    : undefined;
   const grouped = useMemo(() => groupedSources(sources), [sources]);
   const summaryGroup =
     overview.phase === 'ready'
@@ -762,8 +817,9 @@ export function ImportedSensorBreakdown({
           <p className="mt-2 text-[10px] leading-4 text-[#6b777f]">
             {summaryGroup?.availableCount ?? 0} of{' '}
             {summaryGroup?.sourceCount ?? sources.length} sources have at least
-            one complete daily record. The snapshot ends on 19 Sept 2026; this
-            is historical data, not a live reading.
+            one complete daily record. Verified history ends on 19 Sept 2026;
+            the in-progress current week is shown separately when the local
+            bridge has supplied it.
           </p>
         </div>
       ) : null}
@@ -787,7 +843,7 @@ export function ImportedSensorBreakdown({
               </p>
             </div>
             <p className="text-[10px] text-[#6b777f]">
-              Through {formatDate(selected.dataThrough)}
+              History through {formatDate(selected.dataThrough)}
             </p>
           </div>
 
@@ -807,26 +863,36 @@ export function ImportedSensorBreakdown({
               <TapeForSource
                 source={history.data.source}
                 days={history.data.daily}
-                cost={relatedCost}
+                cost={tapeCost}
               />
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <SourceMetric
                   label={
-                    costIdentity(selected)
-                      ? 'Cost · last 7 days'
-                      : selected.aggregation === 'daily_total'
-                        ? 'Last 7 days'
-                        : '7-day average'
+                    selected.currentWeek
+                      ? costIdentity(selected)
+                        ? 'Cost · this week'
+                        : selected.aggregation === 'daily_total'
+                          ? 'This week to date'
+                          : 'This week average'
+                      : costIdentity(selected)
+                        ? 'Cost · last 7 days'
+                        : selected.aggregation === 'daily_total'
+                          ? 'Last 7 days'
+                          : '7-day average'
                   }
                   value={
-                    selected.last7Days
-                      ? formatNumber(selected.last7Days.value, selected.unit)
-                      : formatNumber(0, selected.unit)
+                    selected.currentWeek
+                      ? formatNumber(selected.currentWeek.value, selected.unit)
+                      : selected.last7Days
+                        ? formatNumber(selected.last7Days.value, selected.unit)
+                        : formatNumber(0, selected.unit)
                   }
                   note={
-                    selected.last7Days
-                      ? `${formatDate(selected.last7Days.from)} – ${formatDate(selected.last7Days.to)}`
-                      : 'No complete daily window'
+                    selected.currentWeek
+                      ? `This week · ${selected.currentWeek.dayCount} elapsed day${selected.currentWeek.dayCount === 1 ? '' : 's'}`
+                      : selected.last7Days
+                        ? `${formatDate(selected.last7Days.from)} – ${formatDate(selected.last7Days.to)}`
+                        : 'No complete daily window'
                   }
                 />
                 <SourceMetric
@@ -888,8 +954,9 @@ export function ImportedSensorBreakdown({
             <p className="mt-1 text-[10px] leading-4 text-[#6b777f]">
               {summaryGroup?.availableCount ?? 0} of{' '}
               {summaryGroup?.sourceCount ?? sources.length} sources have at
-              least one complete daily record. The snapshot ends on 19 Sept
-              2026; this is historical data, not a live reading.
+              least one complete daily record. Verified history ends on 19 Sept
+              2026; the in-progress current week is shown separately when the
+              local bridge has supplied it.
             </p>
           </div>
           <div className="space-y-3">

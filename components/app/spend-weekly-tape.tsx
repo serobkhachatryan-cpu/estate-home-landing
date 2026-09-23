@@ -539,12 +539,23 @@ export type MeasuredTapeSubject = {
   unit: string | null;
   aggregation: 'daily_total' | 'daily_average';
   points: MeasuredTapePoint[];
+  currentWeek?: MeasuredTapeCurrentWeek | null;
+};
+
+export type MeasuredTapeCurrentWeek = {
+  weekStart: string;
+  value: number;
+  minimum: number | null;
+  maximum: number | null;
+  dayCount: number;
+  observedAt: string;
 };
 
 export type MeasuredTapeCost = {
   label: string;
   detail: string;
   points: MeasuredTapePoint[];
+  currentWeek?: MeasuredTapeCurrentWeek | null;
 };
 
 type MeasuredWeek = {
@@ -555,6 +566,8 @@ type MeasuredWeek = {
   minimum: number | null;
   maximum: number | null;
   dayCount: number;
+  isLive: boolean;
+  observedAt: string | null;
 };
 
 function measurementDigits(unit: string | null) {
@@ -631,6 +644,8 @@ function buildMeasuredWeeks(subject: MeasuredTapeSubject) {
       minimum: null,
       maximum: null,
       dayCount: 0,
+      isLive: false,
+      observedAt: null,
     };
     existing.total += point.value;
     existing.dayCount += 1;
@@ -649,11 +664,34 @@ function buildMeasuredWeeks(subject: MeasuredTapeSubject) {
     weekly.set(start, existing);
   }
 
+  const current = subject.currentWeek;
+  if (
+    current &&
+    /^\d{4}-\d{2}-\d{2}$/.test(current.weekStart) &&
+    Number.isFinite(current.value) &&
+    current.dayCount >= 1 &&
+    current.dayCount <= 7
+  ) {
+    weekly.set(current.weekStart, {
+      id: `${subject.id}:${current.weekStart}:live`,
+      start: current.weekStart,
+      end: addDays(current.weekStart, 6),
+      value: current.value,
+      total: current.value,
+      minimum: current.minimum,
+      maximum: current.maximum,
+      dayCount: current.dayCount,
+      isLive: true,
+      observedAt: current.observedAt,
+    });
+  }
+
   return [...weekly.values()]
     .map(({ total, ...week }) => ({
       ...week,
-      value:
-        subject.aggregation === 'daily_total'
+      value: week.isLive
+        ? week.value
+        : subject.aggregation === 'daily_total'
           ? total
           : total / Math.max(week.dayCount, 1),
     }))
@@ -696,7 +734,18 @@ export function MeasuredWeeklyTape({
       })
     : [];
   const focusCost = active
-    ? (costWeeks.find((week) => week.start === active.start) ?? null)
+    ? active.isLive
+      ? cost?.currentWeek?.weekStart === active.start
+        ? (buildMeasuredWeeks({
+            id: `${subject.id}:cost:live`,
+            name: cost.label,
+            unit: 'GBP',
+            aggregation: 'daily_total',
+            points: [],
+            currentWeek: cost.currentWeek,
+          })[0] ?? null)
+        : null
+      : (costWeeks.find((week) => week.start === active.start) ?? null)
     : null;
 
   const recentPoints = [...subject.points]
@@ -843,13 +892,20 @@ export function MeasuredWeeklyTape({
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">
               Focus week
               <span className="mx-1.5 text-white/25">·</span>
-              {active.dayCount} recorded day{active.dayCount === 1 ? '' : 's'}
+              {active.isLive ? 'Current week · ' : ''}
+              {active.dayCount} {active.isLive ? 'elapsed' : 'recorded'} day
+              {active.dayCount === 1 ? '' : 's'}
             </p>
             <p className="mt-1 text-[1.65rem] font-semibold leading-none tracking-[-0.05em] tabular-nums">
               {formatMeasurement(active.value, subject.unit)}
             </p>
             <p className="mt-1.5 text-[12px] leading-snug text-white/70">
               {dateRange(active.start, active.end)}
+              {active.isLive && active.observedAt ? (
+                <span className="ml-1 text-[10px] text-[#d9b779]">
+                  · live to {shortDate(active.observedAt.slice(0, 10))}
+                </span>
+              ) : null}
             </p>
           </div>
           {focusCost || range ? (
@@ -885,7 +941,7 @@ export function MeasuredWeeklyTape({
 
       <div className="px-3 pb-1">
         <p className="mb-1 px-1 text-[9px] font-medium uppercase tracking-[0.12em] text-white/35">
-          Recorded weeks · scroll to focus a period
+          Weeks · current week is live · scroll to focus a period
         </p>
         <div className="relative">
           <div
@@ -971,6 +1027,7 @@ function MeasuredWeekRow({
           {dateRange(week.start, week.end)}
         </span>
         <span className="block text-[8px] tabular-nums text-white/30">
+          {week.isLive ? 'Live · ' : ''}
           {week.dayCount} day{week.dayCount === 1 ? '' : 's'}
         </span>
       </span>

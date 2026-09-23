@@ -8,6 +8,10 @@ import {
   replaceLiveSensorSnapshot,
   type LiveSensorBridgeReading,
 } from '@/lib/server/live-sensor-states';
+import {
+  mergeImportedSensorCurrentWeeks,
+  type SensorCurrentWeekImport,
+} from '@/lib/server/sensor-history';
 
 function sameSecret(received: string | null, expected: string | undefined) {
   if (!received || !expected || received.length !== expected.length)
@@ -76,6 +80,59 @@ function liveReading(value: unknown): LiveSensorBridgeReading {
   };
 }
 
+function finiteNumber(value: unknown, label: string) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`${label} is invalid.`);
+  }
+  if (Math.abs(value) > 1_000_000_000) {
+    throw new Error(`${label} is invalid.`);
+  }
+  return value;
+}
+
+function weekStart(value: unknown) {
+  const day = limitedText(value, 'Week start', 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    throw new Error('Week start is invalid.');
+  }
+  const date = new Date(`${day}T12:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.getUTCDay() !== 1) {
+    throw new Error('Week start must be a Monday.');
+  }
+  return day;
+}
+
+function currentWeek(value: unknown): SensorCurrentWeekImport {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Current week is invalid.');
+  }
+  const week = value as Record<string, unknown>;
+  const entityId = limitedText(week.entityId, 'Sensor entity', 255);
+  if (!/^sensor\.[a-zA-Z0-9_]+$/.test(entityId)) {
+    throw new Error('Sensor entity is invalid.');
+  }
+  const minimum =
+    week.minimum == null ? null : finiteNumber(week.minimum, 'Week minimum');
+  const maximum =
+    week.maximum == null ? null : finiteNumber(week.maximum, 'Week maximum');
+  if (minimum != null && maximum != null && minimum > maximum) {
+    throw new Error('Current week range is invalid.');
+  }
+  const dayCount = finiteNumber(week.dayCount, 'Week day count');
+  if (!Number.isInteger(dayCount) || dayCount < 1 || dayCount > 7) {
+    throw new Error('Week day count is invalid.');
+  }
+  return {
+    entityId,
+    weekStart: weekStart(week.weekStart),
+    value: finiteNumber(week.value, 'Week value'),
+    minimum,
+    maximum,
+    dayCount,
+    observedAt: timestamp(week.observedAt, 'Week observed time'),
+  };
+}
+
 async function snapshotOwner(
   body: Record<string, unknown>,
   requestUrl: string,
@@ -123,11 +180,31 @@ export async function POST(request: Request) {
       throw new Error('Live snapshot payload is invalid.');
     }
     const body = payload as Record<string, unknown>;
-    const mode = body.mode === 'merge' ? 'merge' : 'replace';
+    const mode = body.mode;
+    if (mode === 'current_week') {
+      if (!Array.isArray(body.weeks) || !body.weeks.length) {
+        throw new Error('At least one current week is required.');
+      }
+      if (body.weeks.length > 100) {
+        throw new Error('Too many current weeks were supplied.');
+      }
+      const weeks = body.weeks.map(currentWeek);
+      if (new Set(weeks.map((week) => week.entityId)).size !== weeks.length) {
+        throw new Error('Each current-week sensor must be unique.');
+      }
+      const owner = await snapshotOwner(body, request.url);
+      await mergeImportedSensorCurrentWeeks(owner, weeks);
+      return Response.json(
+        { status: 'accepted', sensorCount: weeks.length },
+        { headers: { 'Cache-Control': 'no-store' } },
+      );
+    }
+
+    const liveMode = mode === 'merge' ? 'merge' : 'replace';
     if (!Array.isArray(body.readings) || !body.readings.length) {
       throw new Error('At least one live sensor is required.');
     }
-    if (body.readings.length > (mode === 'merge' ? 100 : 40)) {
+    if (body.readings.length > (liveMode === 'merge' ? 100 : 40)) {
       throw new Error('Too many live sensors were supplied.');
     }
     const readings = body.readings.map(liveReading);
@@ -139,7 +216,7 @@ export async function POST(request: Request) {
     }
     const owner = await snapshotOwner(body, request.url);
     const observedAt =
-      mode === 'merge'
+      liveMode === 'merge'
         ? await mergeLiveSensorSnapshot(owner, readings)
         : await replaceLiveSensorSnapshot(owner, readings);
     return Response.json(

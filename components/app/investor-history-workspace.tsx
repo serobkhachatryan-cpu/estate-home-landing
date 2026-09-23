@@ -45,9 +45,9 @@ export function InvestorHistoryWorkspace() {
             Recorded home systems
           </h1>
           <p className="mt-2 text-[14px] leading-5 text-[#52626c]">
-            Historical Home Assistant statistics through 19 Sept 2026. Current
-            states, when available, are separately marked as live telemetry;
-            values without a complete historical record are shown as zero.
+            Verified daily Home Assistant history through 19 Sept 2026. The
+            in-progress current week and current states are separately marked as
+            live telemetry; values without source data remain zero.
           </p>
         </header>
 

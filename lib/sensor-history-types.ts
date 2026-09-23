@@ -7,6 +7,19 @@ export type SensorHistoryAggregation = 'daily_total' | 'daily_average';
 
 export type SensorHistoryQuality = 'available' | 'needs_review';
 
+/**
+ * An in-progress week-to-date value from the owner-operated Home Assistant
+ * bridge. It is deliberately separate from the verified daily archive.
+ */
+export type ImportedSensorCurrentWeek = {
+  weekStart: string;
+  value: number;
+  minimum: number | null;
+  maximum: number | null;
+  dayCount: number;
+  observedAt: string;
+};
+
 export type ImportedSensorSummary = {
   entityId: string;
   label: string;
@@ -35,6 +48,7 @@ export type ImportedSensorSummary = {
     from: string;
     to: string;
   } | null;
+  currentWeek: ImportedSensorCurrentWeek | null;
 };
 
 export type ImportedSensorDay = {
