@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ImportedSensorBreakdown } from '@/components/app/imported-sensor-breakdown';
+import { InvestorLiveTelemetry } from '@/components/app/investor-live-telemetry';
 import type {
   ImportedSensorGroup,
   SensorHistoryOverviewResponse,
@@ -131,6 +132,13 @@ export function ImportedSystemsWorkspace({
 
   return (
     <div className="space-y-4">
+      {accessToken ? (
+        <InvestorLiveTelemetry
+          endpoint={liveEndpoint}
+          accessToken={accessToken}
+        />
+      ) : null}
+
       <section className="rounded-2xl border border-[#e0d8cb] bg-[#fcfbf8] px-4 py-3">
         <label
           htmlFor="recorded-system"
@@ -163,8 +171,6 @@ export function ImportedSystemsWorkspace({
         note={systemDescriptions[selected.id] ?? systemDescriptions.sensors}
         historyEndpoint={historyEndpoint}
         accessToken={accessToken}
-        liveEndpoint={liveEndpoint}
-        liveAccessToken={accessToken}
         parameterPlacement="after-reading"
         selectedEntityId={selectedSourceByGroup[selected.id]}
         onSelectEntityId={(entityId) =>
