@@ -796,6 +796,7 @@ export function ImportedSensorBreakdown({
             entityId={selected.entityId}
             endpoint={liveEndpoint}
             accessToken={liveAccessToken ?? accessToken}
+            compact
           />
 
           {history.phase === 'ready' &&

@@ -60,11 +60,13 @@ export function LiveHomeAssistantReadings({
   entityId,
   endpoint = '/api/live-sensors',
   accessToken,
+  compact = false,
 }: {
   groupId: LiveSensorGroupId;
   entityId?: string;
   endpoint?: string;
   accessToken?: string;
+  compact?: boolean;
 }) {
   const [state, setState] = useState<LoadState>({ phase: 'loading' });
   const [refreshing, setRefreshing] = useState(false);
@@ -117,6 +119,46 @@ export function LiveHomeAssistantReadings({
   const stale = observedAt ? isStale(observedAt) : false;
   const isAvailable =
     state.phase === 'ready' && state.data.status === 'available' && !stale;
+  const selectedReading =
+    state.phase === 'ready' && state.data.readings.length === 1
+      ? state.data.readings[0]
+      : null;
+
+  if (compact && selectedReading) {
+    return (
+      <section
+        aria-live="polite"
+        className="sticky top-3 z-20 rounded-2xl border border-[#a88348]/45 bg-[#153044] px-4 py-3 text-white shadow-[0_12px_28px_rgba(16,32,48,0.24)]"
+      >
+        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Radio className="size-3.5 text-[#eac789]" strokeWidth={2} />
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#eac789]">
+                Live now · Home Assistant
+              </p>
+            </div>
+            <p className="mt-1 truncate text-[11px] text-white/65">
+              {selectedReading.label}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-[1.55rem] font-semibold leading-none tracking-[-0.05em] tabular-nums text-white">
+              {formatState(selectedReading.state)}
+              {selectedReading.unit ? (
+                <span className="ml-1 text-[0.9rem] font-medium tracking-normal text-white/65">
+                  {selectedReading.unit}
+                </span>
+              ) : null}
+            </p>
+            <p className="mt-1 text-[9px] text-white/55">
+              HA updated {formatTime(selectedReading.stateUpdatedAt)}
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section
