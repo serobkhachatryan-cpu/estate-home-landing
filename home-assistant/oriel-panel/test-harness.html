@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Oriel panel · isolated test harness</title>
+    <script type="module" src="./oriel-panel.js"></script>
+    <style>
+      body { margin: 0; background: #e7e1d7; }
+      .test-tools {
+        position: fixed; z-index: 2; right: 16px; bottom: 16px;
+        display: flex; align-items: center; gap: 10px; max-width: min(430px, calc(100vw - 32px));
+        padding: 12px 14px; border: 1px solid #c7b79e; border-radius: 15px;
+        background: #fffaf0; color: #243f51; box-shadow: 0 10px 28px rgba(28, 42, 46, .18);
+        font: 13px/1.35 system-ui, sans-serif;
+      }
+      button { border: 0; border-radius: 8px; padding: 8px 10px; color: #fff; background: #15344a; cursor: pointer; font: inherit; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <oriel-panel id="panel"></oriel-panel>
+    <aside class="test-tools" aria-label="Test controls">
+      <span><strong>Isolated fixture.</strong> These are synthetic test states, never Aldworth data.</span>
+      <button id="update" type="button">Simulate state update</button>
+    </aside>
+    <script type="module">
+      const panel = document.querySelector('#panel');
+      const now = () => new Date().toISOString();
+      const state = (entityId, value, name, unit, deviceClass) => ({
+        entity_id: entityId,
+        state: String(value),
+        attributes: {
+          friendly_name: name,
+          ...(unit ? { unit_of_measurement: unit } : {}),
+          ...(deviceClass ? { device_class: deviceClass } : {}),
+        },
+        last_changed: now(),
+        last_updated: now(),
+      });
+
+      const states = {
+        'sensor.total_power': state('sensor.total_power', 482.6, 'Total power', 'W', 'power'),
+        'sensor.total_l1_power': state('sensor.total_l1_power', 156.2, 'Total L1 power', 'W', 'power'),
+        'sensor.total_l2_power': state('sensor.total_l2_power', 171.4, 'Total L2 power', 'W', 'power'),
+        'sensor.total_l3_power': state('sensor.total_l3_power', 'unavailable', 'Total L3 power', 'W', 'power'),
+        'sensor.shellypro3em_test_energy_cost': state('sensor.shellypro3em_test_energy_cost', 28.73, 'Metered energy cost', 'GBP', 'monetary'),
+        'sensor.shellypro3em_test_energy': state('sensor.shellypro3em_test_energy', 188.4, 'Metered energy', 'kWh', 'energy'),
+        'sensor.house_water_1_flow': state('sensor.house_water_1_flow', 2.4, 'House water flow', 'L/min', 'volume_flow_rate'),
+        'sensor.main_water_flow': state('sensor.main_water_flow', 4.1, 'Main water flow', 'L/min', 'volume_flow_rate'),
+        'sensor.lodge_water_flow': state('sensor.lodge_water_flow', 0, 'Lodge water flow', 'L/min', 'volume_flow_rate'),
+        'sensor.house_water_1_total_l': state('sensor.house_water_1_total_l', 12684, 'House water total', 'L', 'volume'),
+        'sensor.main_water_total_l': state('sensor.main_water_total_l', 21543, 'Main water total', 'L', 'volume'),
+        'sensor.lodge_water_total_l': state('sensor.lodge_water_total_l', 8291, 'Lodge water total', 'L', 'volume'),
+        'sensor.lodge_water_tank_volume': state('sensor.lodge_water_tank_volume', 720, 'Lodge tank volume', 'L', 'volume'),
+        'sensor.house_fuel_tank_1': state('sensor.house_fuel_tank_1', 54.8, 'House fuel tank 1', '%', 'volume'),
+        'sensor.house_fuel_tank_1_volume': state('sensor.house_fuel_tank_1_volume', 603, 'House fuel tank 1 volume', 'L', 'volume'),
+        'sensor.office_ups_battery': state('sensor.office_ups_battery', 98, 'Office UPS battery', '%', 'battery'),
+        'sensor.office_ups_runtime': state('sensor.office_ups_runtime', 43, 'Office UPS runtime', 'min', 'duration'),
+        'sensor.basement_ups_temperature': state('sensor.basement_ups_temperature', 21.2, 'Basement UPS temperature', '°C', 'temperature'),
+        'sensor.aldworth_nvr_storage_utilization': state('sensor.aldworth_nvr_storage_utilization', 68, 'NVR storage utilization', '%'),
+        'sensor.starlink_ping_2': state('sensor.starlink_ping_2', 34, 'Starlink ping', 'ms', 'duration'),
+        'sensor.personal_iphone_battery': state('sensor.personal_iphone_battery', 87, 'Personal iPhone battery', '%', 'battery'),
+      };
+
+      const hass = { states };
+      panel.panel = { config: {} };
+      panel.hass = hass;
+
+      document.querySelector('#update').addEventListener('click', () => {
+        const current = Number(states['sensor.total_power'].state);
+        states['sensor.total_power'] = state(
+          'sensor.total_power',
+          current + 17.4,
+          'Total power',
+          'W',
+          'power',
+        );
+        panel.hass = { states: { ...states } };
+      });
+    </script>
+  </body>
+</html>
