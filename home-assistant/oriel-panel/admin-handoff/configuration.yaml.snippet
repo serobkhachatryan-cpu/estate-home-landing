@@ -1,0 +1,13 @@
+# Oriel native Home Assistant panel
+#
+# If configuration.yaml already contains panel_custom:, append only the
+# indented item below. Do not create a second panel_custom: key.
+panel_custom:
+  - name: oriel-panel
+    url_path: oriel
+    sidebar_title: Oriel
+    sidebar_icon: mdi:home-analytics
+    module_url: /local/oriel/oriel-panel.js?v=1.0.0
+    # Set true during an admin-only pilot. False lets authenticated HA users
+    # open this read-only panel, subject to its approved entity source rules.
+    require_admin: false
