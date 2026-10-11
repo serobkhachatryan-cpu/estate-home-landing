@@ -108,6 +108,7 @@ entity_ids:
     - sensor.REPLACE_WITH_APPROVED_FUEL_SOURCE
   power:
     - sensor.REPLACE_WITH_APPROVED_BACKUP_POWER_SOURCE
+statistics: true
 ```
 
 Replace only the placeholders with owner-approved entity IDs. Omit an entity
@@ -126,23 +127,28 @@ install Oriel. Keep it as the default quick overview if desired, or make the
 editable dashboard the household landing page only after the owner approves
 that navigation choice.
 
+`statistics: true` enables a read-only request to the signed-in Home Assistant
+Recorder for the selected approved source. It creates the six-week chart from
+recorded states; no data leaves Home Assistant and no device service is called.
+The card deliberately does not estimate a blank week.
+
 ### A4. Optional: full trusted-admin catalogue
 
 To show all available `sensor.*` states in the expandable catalogue, add this
 single line to the card YAML:
 
 ```yaml
-inventory_mode: all_sensors
+show_catalog: true
 ```
 
 Use it **only** on an admin-only owner/estate-operations dashboard. Do not use
 it for an investor, guest, tenant or contractor because an estate's full
 sensor list may include device-health and personal-device telemetry.
 
-When full catalogue mode is enabled, the card shows tabs for Electricity,
-Water, Fuel, Backup power, Climate & weather, Security & video, Network & PoE
-and Other sensors. It builds them directly from the currently available
-Home Assistant `sensor.*` states; it does not take data from Oriel panel.
+This catalogue is intentionally off by default: it can include technical,
+diagnostic and irrelevant sensors. The normal card view shows only the
+approved `entity_ids` (or explicit `sensor_groups`) and avoids a noisy estate
+inventory.
 
 ### A5. Optional: explicit groups for an operational dashboard
 

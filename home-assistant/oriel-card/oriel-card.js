@@ -20,14 +20,16 @@ const INVENTORY_SYSTEMS = [
 ];
 
 const rules = {
-  electricity: /(?:shelly|total(?:_l[123])?_power|plug_1_(?:energy|power)|energy_cost)/i,
-  water: /(?:water|irrigation|outdoor_pool|tank)/i,
-  fuel: /(?:fuel|genset)/i,
-  power: /(?:battery|ups|input_voltage|output_voltage|(?:^|_)load$|total_l[123]_power|total_power)/i,
+  electricity: /^sensor\.(?:total(?:_l[123])?_power|shellypro3em_[a-z0-9]+_(?:power|energy|energy_cost))$/i,
+  water: /^sensor\.(?:house_water_1_(?:flow|total_l)|main_water_(?:flow|total_l)|lodge_water_(?:flow|total_l|tank_volume))$/i,
+  fuel: /^sensor\.(?:house_fuel_tank_\d+(?:_volume)?|.*(?:fuel|genset).*(?:volume|level))$/i,
+  power: /^sensor\.(?:(?:office|lodge|basement|loft).*?(?:ups|battery)|.*(?:input_voltage|output_voltage))$/i,
   climate: /(?:temperature|humidity|illuminance|pressure|rain|wind|uv|solar|dewpoint)/i,
   security: /(?:nvr|camera|cam_|disk_write|storage_|recording|intercom|gates_)/i,
   network: /(?:cpu_usage|memory_usage|device_status|poe_power|starlink|wifi|switch|gateway|_ap_)/i,
 };
+
+const HISTORY_WEEKS = 6;
 
 const esc = (value) => String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 const attrs = (entity) => entity && entity.attributes && typeof entity.attributes === "object" ? entity.attributes : {};
@@ -54,6 +56,38 @@ const categoryId = (id) => {
   return "other";
 };
 const category = (id) => (INVENTORY_SYSTEMS.find((system) => system.id === categoryId(id)) || INVENTORY_SYSTEMS.at(-1)).label;
+const timestamp = (state) => {
+  const parsed = Date.parse(state && (state.last_updated || state.last_changed || state.lu || ""));
+  return Number.isFinite(parsed) ? parsed : null;
+};
+const cumulative = (entity) => String(attrs(entity).device_class || "").toLowerCase() === "energy" || /(?:total_l|_energy$|_energy_)/i.test(entity.entity_id);
+const monday = (date) => {
+  const result = new Date(date); result.setHours(0, 0, 0, 0);
+  result.setDate(result.getDate() - (result.getDay() === 0 ? 6 : result.getDay() - 1));
+  return result;
+};
+const weekRange = (index, anchor = new Date()) => {
+  const end = new Date(monday(anchor)); end.setDate(end.getDate() + 7 - index * 7);
+  const start = new Date(end); start.setDate(start.getDate() - 7);
+  return { start, end };
+};
+const historyPoints = (response, entityId) => Array.isArray(response) ? (Array.isArray(response[0]) ? response[0] : response) : Array.isArray(response && response[entityId]) ? response[entityId] : [];
+const historyWeek = (range, history, entity) => {
+  const points = history.map((item) => ({ at: timestamp(item), value: Number.parseFloat(item && item.state) }))
+    .filter((item) => item.at !== null && Number.isFinite(item.value) && item.at >= range.start.getTime() && item.at < range.end.getTime())
+    .sort((a, b) => a.at - b.at);
+  if (!points.length) return null;
+  return cumulative(entity) && points.length > 1 ? Math.max(0, points.at(-1).value - points[0].value) : points.at(-1).value;
+};
+const sourcePriority = (system, entity) => {
+  let score = available(entity) ? 100 : 0;
+  if (system.id === "electricity" && attrs(entity).device_class === "energy") score += 80;
+  if (system.id === "water" && /(?:total_l|total|volume)/i.test(entity.entity_id)) score += 80;
+  if (system.id === "fuel" && /(?:volume|level)/i.test(entity.entity_id)) score += 60;
+  if (system.id === "power" && /battery/i.test(entity.entity_id)) score += 60;
+  if (money(entity)) score -= 30;
+  return score;
+};
 
 class OrielCard extends HTMLElement {
   constructor() {
@@ -63,15 +97,26 @@ class OrielCard extends HTMLElement {
     this._expanded = false;
     this._hass = null;
     this._config = {};
+    this._history = new Map();
+    this._historyLoading = new Set();
+    this._renderQueued = false;
   }
 
   setConfig(config) {
     if (!config || typeof config !== "object") throw new Error("Oriel card requires a configuration object");
     this._config = config;
-    this.render();
+    this.queueRender();
   }
 
-  set hass(hass) { this._hass = hass; this.render(); }
+  set hass(hass) { this._hass = hass; this.queueRender(); }
+
+  connectedCallback() { this.render(); }
+
+  queueRender() {
+    if (this._renderQueued) return;
+    this._renderQueued = true;
+    Promise.resolve().then(() => { this._renderQueued = false; this.render(); });
+  }
 
   getCardSize() { return this._expanded ? 18 : 8; }
 
@@ -79,8 +124,7 @@ class OrielCard extends HTMLElement {
     const custom = Array.isArray(this._config.sensor_groups) ? this._config.sensor_groups
       .filter((group) => group && typeof group.id === "string" && typeof group.label === "string")
       .map((group) => ({ id: group.id, label: group.label, icon: group.icon || "·", unit: group.unit || "", entity_ids: Array.isArray(group.entity_ids) ? group.entity_ids : [] })) : [];
-    if (custom.length) return custom;
-    return this._config.inventory_mode === "all_sensors" ? INVENTORY_SYSTEMS : UTILITY_SYSTEMS;
+    return custom.length ? custom : UTILITY_SYSTEMS;
   }
 
   sources(system) {
@@ -89,9 +133,23 @@ class OrielCard extends HTMLElement {
     return Object.values(stateMap).filter((entity) => {
       if (!/^sensor\./i.test(entity.entity_id)) return false;
       if (exact) return exact.includes(entity.entity_id);
-      if (this._config.inventory_mode === "all_sensors") return categoryId(entity.entity_id) === system.id;
       return rules[system.id] && rules[system.id].test(entity.entity_id);
-    }).sort((a, b) => name(a).localeCompare(name(b)));
+    }).sort((a, b) => sourcePriority(system, b) - sourcePriority(system, a) || name(a).localeCompare(name(b)));
+  }
+
+  statisticsEnabled() {
+    const setting = this._config.statistics;
+    return setting === true || Boolean(setting && typeof setting === "object" && setting.history === true);
+  }
+
+  requestHistory(entity) {
+    if (!this.statisticsEnabled() || !entity || !this._hass || this._history.has(entity.entity_id) || this._historyLoading.has(entity.entity_id) || typeof this._hass.callWS !== "function") return;
+    const oldest = weekRange(HISTORY_WEEKS - 1).start;
+    this._historyLoading.add(entity.entity_id);
+    this._hass.callWS({ type: "history/history_during_period", start_time: oldest.toISOString(), end_time: new Date().toISOString(), entity_ids: [entity.entity_id], minimal_response: true, no_attributes: true })
+      .then((response) => this._history.set(entity.entity_id, historyPoints(response, entity.entity_id)))
+      .catch(() => this._history.set(entity.entity_id, []))
+      .finally(() => { this._historyLoading.delete(entity.entity_id); this.render(); });
   }
 
   render() {
@@ -101,17 +159,23 @@ class OrielCard extends HTMLElement {
     const sources = this.sources(system);
     const primary = sources.find(available) || sources[0];
     const cost = sources.find(money) || sources.find((entity) => /cost/i.test(entity.entity_id));
+    const historySource = sources.filter((entity) => !money(entity)).sort((a, b) => sourcePriority(system, b) - sourcePriority(system, a))[0];
     const weekly = Array.isArray(this._config.archive_weekly_values && this._config.archive_weekly_values[system.id])
       ? this._config.archive_weekly_values[system.id] : [];
     const weeklyCosts = Array.isArray(this._config.archive_weekly_costs && this._config.archive_weekly_costs[system.id])
       ? this._config.archive_weekly_costs[system.id] : [];
-    const max = Math.max(1, ...weekly.filter(Number.isFinite));
-    const allSensors = this._config.inventory_mode === "all_sensors"
+    const liveHistory = historySource ? this._history.get(historySource.entity_id) || [] : [];
+    const dynamicWeekly = historySource && this.statisticsEnabled()
+      ? Array.from({ length: HISTORY_WEEKS }, (_, index) => historyWeek(weekRange(index), liveHistory, historySource)) : [];
+    const weeklyValues = weekly.length ? weekly : dynamicWeekly;
+    const max = Math.max(1, ...weeklyValues.filter(Number.isFinite));
+    const allSensors = this._config.show_catalog === true
       ? Object.values(this._hass && this._hass.states || {}).filter((entity) => /^sensor\./i.test(entity.entity_id)) : [];
     const groups = allSensors.reduce((result, entity) => {
       const key = category(entity.entity_id); (result[key] ||= []).push(entity); return result;
     }, {});
-    const latest = weekly[0];
+    this.requestHistory(historySource);
+    const historyLoading = historySource && this._historyLoading.has(historySource.entity_id);
     this.shadowRoot.innerHTML = `
       <style>
         :host { display:block; color:#173448; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
@@ -125,10 +189,10 @@ class OrielCard extends HTMLElement {
       <article class="card">
         <header><div><div class="brand">Oriel</div><div class="sub">Aldworth · Home Assistant card</div></div><div class="state"><i class="dot"></i>read only</div></header>
         <nav class="tabs" aria-label="Oriel systems">${systems.map((item) => `<button class="tab" data-system="${item.id}" aria-selected="${item.id === system.id}">${item.icon} ${item.label}</button>`).join("")}</nav>
-        <section class="main"><div class="hero"><div><p class="eyebrow">Current system</p><h2>${esc(system.label)}</h2></div><div class="metric"><span>${cost ? "Published cost" : "Live source"}</span><strong>${esc(cost ? display(cost) : display(primary))}</strong></div></div>${weekly.length ? `<div class="timeline"><p class="eyebrow">Recorded weeks</p>${weekly.map((raw, index) => { const number = Number(raw); const ratio = Number.isFinite(number) ? Math.max(3, Math.round(number / max * 100)) : 0; return `<div class="week"><span>${index === 0 ? "Latest" : `${index} wk ago`}</span><span class="track"><i class="bar" style="width:${ratio}%"></i></span><strong>${esc(format(number, system.unit))}${Number.isFinite(Number(weeklyCosts[index])) ? `<small class="cost">${esc(format(Number(weeklyCosts[index]), "GBP", true))}</small>` : ""}</strong></div>`; }).join("")}</div>` : `<div class="empty">No imported weekly record is configured for this system. Live source states remain visible below.</div>`}</section>
+        <section class="main"><div class="hero"><div><p class="eyebrow">Current system</p><h2>${esc(system.label)}</h2></div><div class="metric"><span>${cost ? "Published cost" : "Live source"}</span><strong>${esc(cost ? display(cost) : display(primary))}</strong></div></div>${weeklyValues.length ? `<div class="timeline"><p class="eyebrow">${weekly.length ? "Imported weekly record" : "Recorded weekly statistics"}</p>${weeklyValues.map((raw, index) => { const number = Number(raw); const ratio = Number.isFinite(number) ? Math.max(3, Math.round(number / max * 100)) : 0; return `<div class="week"><span>${index === 0 ? "This week" : `${index} wk ago`}</span><span class="track"><i class="bar" style="width:${ratio}%"></i></span><strong>${Number.isFinite(number) ? esc(format(number, historySource ? (attrs(historySource).unit_of_measurement || system.unit) : system.unit)) : "No record"}${Number.isFinite(Number(weeklyCosts[index])) ? `<small class="cost">${esc(format(Number(weeklyCosts[index]), "GBP", true))}</small>` : ""}</strong></div>`; }).join("")}</div>` : `<div class="empty">${historyLoading ? "Loading Recorder statistics for the approved source…" : this.statisticsEnabled() ? "No recorded statistics are available for the approved source yet." : "Weekly statistics are disabled. Add statistics: true to this card configuration."}</div>`}</section>
         <section class="sources"><div class="heading"><h3>Current sources</h3><span>${sources.filter(available).length}/${sources.length} available</span></div><div class="grid">${sources.length ? sources.map((entity) => `<div class="source"><b title="${esc(name(entity))}">${esc(name(entity))}</b><span>${esc(display(entity))}</span><small>${esc(entity.entity_id)}</small></div>`).join("") : `<div class="empty">No approved source in this system.</div>`}</div></section>
-        ${allSensors.length ? `<details ${this._expanded ? "open" : ""}><summary>All approved Aldworth sensors · ${allSensors.filter(available).length}/${allSensors.length} available</summary><div class="catalog">${Object.entries(groups).sort(([a],[b]) => a.localeCompare(b)).map(([label, entries]) => `<h4>${esc(label)} · ${entries.length}</h4><div class="grid">${entries.sort((a,b) => name(a).localeCompare(name(b))).map((entity) => `<div class="source"><b title="${esc(name(entity))}">${esc(name(entity))}</b><span>${esc(display(entity))}</span><small>${esc(entity.entity_id)}</small></div>`).join("")}</div>`).join("")}</div></details>` : ""}
-        <div class="note">Oriel reads Home Assistant states already present in this signed-in dashboard. It has no control buttons, external requests, tokens or service calls.</div>
+        ${allSensors.length ? `<details ${this._expanded ? "open" : ""}><summary>Full administrator sensor catalogue · ${allSensors.filter(available).length}/${allSensors.length} available</summary><div class="catalog">${Object.entries(groups).sort(([a],[b]) => a.localeCompare(b)).map(([label, entries]) => `<h4>${esc(label)} · ${entries.length}</h4><div class="grid">${entries.sort((a,b) => name(a).localeCompare(name(b))).map((entity) => `<div class="source"><b title="${esc(name(entity))}">${esc(name(entity))}</b><span>${esc(display(entity))}</span><small>${esc(entity.entity_id)}</small></div>`).join("")}</div>`).join("")}</div></details>` : ""}
+        <div class="note">Oriel reads approved Home Assistant states already present in this signed-in dashboard. ${this.statisticsEnabled() ? "Weekly statistics use a read-only Recorder query for the selected approved source only." : "No Recorder history is requested."} It has no control buttons, external requests, tokens or service calls.</div>
       </article>`;
     this.shadowRoot.querySelectorAll("[data-system]").forEach((button) => button.addEventListener("click", () => { this._selected = button.dataset.system; this.render(); }));
     const details = this.shadowRoot.querySelector("details");

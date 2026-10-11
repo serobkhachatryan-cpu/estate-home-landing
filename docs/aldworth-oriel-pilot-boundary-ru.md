@@ -38,8 +38,8 @@ Assistant instance.
 | Область | Разрешённый результат |
 |---|---|
 | Интерфейс | Один или оба независимых нативных интерфейса: `panel_custom` Oriel в sidebar по адресу `/oriel` и `custom:oriel-card` в обычном редактируемом Lovelace dashboard. Card не читает panel и panel не читает card: оба получают states из авторизованной HA-сессии. Card может стоять рядом с нативными HA cards; system-generated `Overview` не является местом установки произвольной custom card |
-| Тип данных | Текущие состояния согласованных сущностей из `hass.states`; плюс не более шести недель Recorder history **одной выбранной** allowlisted-сущности через уже авторизованную WebSocket-сессию HA (`history/history_during_period`, `minimal_response: true`, `no_attributes: true`) |
-| Представление | Panel сохраняет четыре weekly tabs: Electricity, Water, Fuel и Power. Card по умолчанию показывает те же utilities, а при `inventory_mode: all_sensors` строит tabs по всем sensor-категориям (включая Climate, Security, Network и Other); администратор также может задать точные `sensor_groups`. Full catalogue доступен только HA administrator. Panel показывает Recorder weekly timeline; card отображает configured/imported weekly values и live states в dashboard. В обоих случаях источник, entity ID, текущее значение, unit и `Unavailable` / `No record` не подменяются догадкой |
+| Тип данных | Текущие состояния согласованных сущностей из `hass.states`; при явном `statistics: true` — не более шести недель Recorder history **одной выбранной** allowlisted-сущности через уже авторизованную WebSocket-сессию HA (`history/history_during_period`, `minimal_response: true`, `no_attributes: true`) |
+| Представление | Panel сохраняет четыре weekly tabs: Electricity, Water, Fuel и Power. Card по умолчанию показывает те же согласованные utilities и может строить по ним Recorder weekly statistics при явной настройке; администратор также может задать точные `sensor_groups`. Полный raw catalogue включается только отдельным `show_catalog: true` и только для HA administrator. В обоих случаях источник, entity ID, текущее значение, unit и `Unavailable` / `No record` не подменяются догадкой |
 | Финансовые состояния | Только индивидуальные monetary/cost состояния, уже опубликованные Home Assistant; без вычисляемой суммы, тарифа или прогноза от Oriel |
 | История | Для weekly timeline — только ограниченный запрос Recorder одной выбранной сущности; bulk import/export Recorder запрещён. История и live-state не смешиваются без явной маркировки |
 | Доступ | Авторизованные пользователи Home Assistant в пределах их собственной HA-сессии; на строгом пилоте - администратор Home Assistant или конкретно письменно утверждённые named users |
@@ -67,7 +67,7 @@ Assistant instance.
 
 По умолчанию и panel, и card используют строгий allowlist. Исключение для
 **локального admin-only Aldworth pilot** — явно включённый
-`inventory_mode: all_sensors`: каталог показывает все `sensor.*`, уже
+`show_catalog: true`: каталог показывает все `sensor.*`, уже
 переданные Home Assistant в `hass.states` текущему авторизованному
 admin-пользователю. Это не REST API discovery, не чтение registry и не экспорт
 данных. Оно не доступно investor, guest, tenant, contractor или public user.
@@ -193,7 +193,7 @@ owner-approved data flow.
 ### 9.2 Change Request обязателен для
 
 - добавления/удаления любого entity ID;
-- включения `inventory_mode: all_sensors`, добавления/изменения `sensor_groups`, изменения списка пользователей dashboard или снятия admin-only защиты;
+- включения `show_catalog: true`, `statistics: true`, добавления/изменения `sensor_groups`, изменения списка пользователей dashboard или снятия admin-only защиты;
 - изменения data classification или аудитории;
 - изменения от read-only к control;
 - любой интеграции с облаком, W3DS, внешним сайтом, analytics, bridge или API;
@@ -222,7 +222,7 @@ owner-approved data flow.
 - Electricity показывает то же текущее `sensor.total_power`, что и Home Assistant, когда entity доступна.
 - Water показывает только разрешённые house/main/lodge states.
 - Existing Shelly cost states отображаются индивидуально; суммарная стоимость не изобретается.
-- Panel weekly timeline посылает не более одного `history/history_during_period` запроса за выбор, только к allowlisted entity, не более чем за шесть недель и без attributes. Card не посылает этот запрос и явно маркирует configured archive weekly values как recorded/imported, а не live.
+- Panel weekly timeline и Card при явно включённом `statistics: true` посылают не более одного `history/history_during_period` запроса за выбор, только к allowlisted entity, не более чем за шесть недель и без attributes. Imported weekly values всегда маркируются как recorded/imported, а не live.
 - Недоступный источник отображается как `Unavailable` или отсутствует по правилам интерфейса; не заменяется нулём.
 - Нажатие на любой элемент интерфейса не вызывает изменения state устройства.
 - После обновления доступен rollback на предыдущий asset и результат повторно проходит эти проверки.
