@@ -20,6 +20,7 @@ Download only from these repository links:
 | `oriel-card.js` | Normal Home Assistant dashboard card | [Download card](https://raw.githubusercontent.com/serobkhachatryan-cpu/estate-home-landing/main/home-assistant/oriel-card/oriel-card.js) |
 | `oriel-panel.js` | Optional full-screen sidebar panel | [Download panel](https://raw.githubusercontent.com/serobkhachatryan-cpu/estate-home-landing/main/home-assistant/oriel-panel/oriel-panel.js) |
 | This guide | Current installation steps | [Open guide on GitHub](https://github.com/serobkhachatryan-cpu/estate-home-landing/blob/main/home-assistant/ADMINISTRATOR-GUIDE.md) |
+| Aldworth pilot boundary | Approved data, access and delivery boundary | [Open pilot boundary](https://github.com/serobkhachatryan-cpu/estate-home-landing/blob/main/docs/aldworth-oriel-pilot-boundary-ru.md) |
 
 The links are public HTTPS URLs. No Home Assistant backup, Recorder database,
 Long-Lived Access Token, password, network address, or raw Aldworth data is
