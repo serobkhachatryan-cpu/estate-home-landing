@@ -1,10 +1,18 @@
-# Aldworth - жёсткие границы пилота Oriel
+# Aldworth — жёсткие границы пилота Oriel
 
-**Статус:** рабочая спецификация v0.2
+**Статус:** границы пилота v1.0 (для утверждения владельцем)
 
 **Назначение:** зафиксировать, что именно Oriel делает на объекте Aldworth, какие данные ему разрешено получать, что он не делает ни при каких условиях и по какому процессу меняется объём работ.
 
 Этот документ является основой для технического задания, доступа Home Assistant и будущего SOW. Он не заменяет договор, DPA, правила Home Assistant, требования страховщика или юридическую консультацию.
+
+## Как читать этот документ
+
+Это **не список желаний и не roadmap**. Это контрактная техническая граница
+первого пилота: всё, что не названо в разделе «Включено», считается
+невключённым до отдельного письменного Change Request. Слово «Aldworth» ниже
+означает только один согласованный объект и его owner-controlled Home
+Assistant instance.
 
 ## 1. Решение в одном абзаце
 
@@ -29,7 +37,7 @@
 
 | Область | Разрешённый результат |
 |---|---|
-| Интерфейс | Один или оба независимых нативных интерфейса: `panel_custom` Oriel в sidebar по адресу `/oriel` и `custom:oriel-card` в обычном Lovelace dashboard. Card не читает panel и panel не читает card: оба получают states из авторизованной HA-сессии |
+| Интерфейс | Один или оба независимых нативных интерфейса: `panel_custom` Oriel в sidebar по адресу `/oriel` и `custom:oriel-card` в обычном редактируемом Lovelace dashboard. Card не читает panel и panel не читает card: оба получают states из авторизованной HA-сессии. Card может стоять рядом с нативными HA cards; system-generated `Overview` не является местом установки произвольной custom card |
 | Тип данных | Текущие состояния согласованных сущностей из `hass.states`; плюс не более шести недель Recorder history **одной выбранной** allowlisted-сущности через уже авторизованную WebSocket-сессию HA (`history/history_during_period`, `minimal_response: true`, `no_attributes: true`) |
 | Представление | Panel сохраняет четыре weekly tabs: Electricity, Water, Fuel и Power. Card по умолчанию показывает те же utilities, а при `inventory_mode: all_sensors` строит tabs по всем sensor-категориям (включая Climate, Security, Network и Other); администратор также может задать точные `sensor_groups`. Full catalogue доступен только HA administrator. Panel показывает Recorder weekly timeline; card отображает configured/imported weekly values и live states в dashboard. В обоих случаях источник, entity ID, текущее значение, unit и `Unavailable` / `No record` не подменяются догадкой |
 | Финансовые состояния | Только индивидуальные monetary/cost состояния, уже опубликованные Home Assistant; без вычисляемой суммы, тарифа или прогноза от Oriel |

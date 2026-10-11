@@ -1,4 +1,4 @@
-# Oriel for Home Assistant — administrator guide
+# Oriel for Home Assistant — installation guide for the card and panel
 
 This document is the complete installation handoff for the native Oriel
 interfaces. It covers both delivery options:
@@ -10,6 +10,21 @@ Both are read-only browser components. They independently read Home Assistant
 states already available to the signed-in user; neither component calls a Home
 Assistant service, stores a token, embeds the investor site, or contacts an
 external API.
+
+## Choose the right interface
+
+| Need | Install |
+| --- | --- |
+| Oriel should appear **alongside ordinary Home Assistant cards** (lights, climate, native entity cards, etc.) | **Oriel card** |
+| Oriel needs its own full-page workspace in the HA sidebar | **Oriel panel** |
+| Both views are useful | Install both; they are independent and can coexist |
+
+> **Home Assistant Overview note.** The newer auto-generated `Overview`
+> dashboard does not accept arbitrary custom cards. To place Oriel next to
+> other cards, use a normal, editable Lovelace dashboard (for example
+> `Estate overview`) and add Oriel there through **Edit dashboard → Add card →
+> Manual**. This is a Home Assistant product limitation, not a limitation of
+> the Oriel card.
 
 ## Official public download links
 
@@ -97,6 +112,19 @@ entity_ids:
 
 Replace only the placeholders with owner-approved entity IDs. Omit an entity
 only when no approved source exists; never substitute a guessed ID.
+
+### A3a. Put Oriel alongside other cards
+
+Use a normal editable dashboard, then add standard HA cards and the Oriel card
+to the same view. For example, add a native **Entities** card for selected
+meters, a **Weather** card and `custom:oriel-card`. Home Assistant lays those
+cards out using its normal dashboard layout; Oriel is not a separate app,
+iframe or embedded website.
+
+Do not convert or replace the system-generated `Overview` dashboard just to
+install Oriel. Keep it as the default quick overview if desired, or make the
+editable dashboard the household landing page only after the owner approves
+that navigation choice.
 
 ### A4. Optional: full trusted-admin catalogue
 
