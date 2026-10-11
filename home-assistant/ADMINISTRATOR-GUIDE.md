@@ -111,6 +111,37 @@ Use it **only** on an admin-only owner/estate-operations dashboard. Do not use
 it for an investor, guest, tenant or contractor because an estate's full
 sensor list may include device-health and personal-device telemetry.
 
+When full catalogue mode is enabled, the card shows tabs for Electricity,
+Water, Fuel, Backup power, Climate & weather, Security & video, Network & PoE
+and Other sensors. It builds them directly from the currently available
+Home Assistant `sensor.*` states; it does not take data from Oriel panel.
+
+### A5. Optional: explicit groups for an operational dashboard
+
+For a user who should see specific non-utility sources without seeing every
+sensor, use `sensor_groups` instead of `inventory_mode: all_sensors`:
+
+```yaml
+type: custom:oriel-card
+sensor_groups:
+  - id: water-operations
+    label: Water operations
+    icon: "≈"
+    entity_ids:
+      - sensor.REPLACE_WITH_WATER_TOTAL
+      - sensor.REPLACE_WITH_WATER_FLOW
+      - sensor.REPLACE_WITH_TANK_LEVEL
+  - id: estate-weather
+    label: Estate weather
+    icon: "◌"
+    entity_ids:
+      - sensor.REPLACE_WITH_OUTDOOR_TEMPERATURE
+      - sensor.REPLACE_WITH_OUTDOOR_HUMIDITY
+```
+
+`sensor_groups` overrides the automatic tabs. Each group must contain only
+owner-approved exact entity IDs.
+
 ## B. Optional: install the full-screen Oriel panel
 
 1. Download [oriel-panel.js](https://raw.githubusercontent.com/serobkhachatryan-cpu/estate-home-landing/main/home-assistant/oriel-panel/oriel-panel.js).

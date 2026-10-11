@@ -4,11 +4,19 @@
  * No network calls, storage, token or HA service calls are used.
  */
 
-const SYSTEMS = [
+const UTILITY_SYSTEMS = [
   { id: "electricity", label: "Electricity", icon: "ϟ", unit: "kWh" },
   { id: "water", label: "Water", icon: "≈", unit: "L" },
   { id: "fuel", label: "Fuel", icon: "◒", unit: "L" },
   { id: "power", label: "Power", icon: "⚡", unit: "" },
+];
+
+const INVENTORY_SYSTEMS = [
+  ...UTILITY_SYSTEMS,
+  { id: "climate", label: "Climate & weather", icon: "◌", unit: "" },
+  { id: "security", label: "Security & video", icon: "◇", unit: "" },
+  { id: "network", label: "Network & PoE", icon: "⌁", unit: "" },
+  { id: "other", label: "Other sensors", icon: "·", unit: "" },
 ];
 
 const rules = {
@@ -16,6 +24,9 @@ const rules = {
   water: /(?:water|irrigation|outdoor_pool|tank)/i,
   fuel: /(?:fuel|genset)/i,
   power: /(?:battery|ups|input_voltage|output_voltage|(?:^|_)load$|total_l[123]_power|total_power)/i,
+  climate: /(?:temperature|humidity|illuminance|pressure|rain|wind|uv|solar|dewpoint)/i,
+  security: /(?:nvr|camera|cam_|disk_write|storage_|recording|intercom|gates_)/i,
+  network: /(?:cpu_usage|memory_usage|device_status|poe_power|starlink|wifi|switch|gateway|_ap_)/i,
 };
 
 const esc = (value) => String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
@@ -31,17 +42,18 @@ const format = (raw, unit = "", isMoney = false) => {
 };
 const display = (entity) => !entity ? "No source" : !available(entity) ? "Unavailable" : format(value(entity), attrs(entity).unit_of_measurement || "", money(entity));
 const exactIds = (config, system) => Array.isArray(config.entity_ids && config.entity_ids[system]) ? config.entity_ids[system] : null;
-const category = (id) => {
+const categoryId = (id) => {
   const source = String(id).toLowerCase();
-  if (/(?:water|irrigation|outdoor_pool|tank)/.test(source)) return "Water";
-  if (/(?:fuel|genset)/.test(source)) return "Fuel";
-  if (/(?:battery|ups|input_voltage|output_voltage|(?:^|_)load$|total_l[123]_power|total_power)/.test(source)) return "Backup power";
-  if (/(?:shelly|plug_1_(?:energy|power)|energy_cost)/.test(source)) return "Electricity";
-  if (/(?:temperature|humidity|illuminance|pressure|rain|wind|uv|solar|dewpoint)/.test(source)) return "Climate & weather";
-  if (/(?:nvr|camera|cam_|disk_write|storage_|recording|intercom|gates_)/.test(source)) return "Security & video";
-  if (/(?:cpu_usage|memory_usage|device_status|poe_power|starlink|wifi|switch|gateway|_ap_)/.test(source)) return "Network & PoE";
-  return "Other estate sensors";
+  if (rules.water.test(source)) return "water";
+  if (rules.fuel.test(source)) return "fuel";
+  if (rules.power.test(source)) return "power";
+  if (rules.electricity.test(source)) return "electricity";
+  if (rules.climate.test(source)) return "climate";
+  if (rules.security.test(source)) return "security";
+  if (rules.network.test(source)) return "network";
+  return "other";
 };
+const category = (id) => (INVENTORY_SYSTEMS.find((system) => system.id === categoryId(id)) || INVENTORY_SYSTEMS.at(-1)).label;
 
 class OrielCard extends HTMLElement {
   constructor() {
@@ -63,19 +75,30 @@ class OrielCard extends HTMLElement {
 
   getCardSize() { return this._expanded ? 18 : 8; }
 
+  systems() {
+    const custom = Array.isArray(this._config.sensor_groups) ? this._config.sensor_groups
+      .filter((group) => group && typeof group.id === "string" && typeof group.label === "string")
+      .map((group) => ({ id: group.id, label: group.label, icon: group.icon || "·", unit: group.unit || "", entity_ids: Array.isArray(group.entity_ids) ? group.entity_ids : [] })) : [];
+    if (custom.length) return custom;
+    return this._config.inventory_mode === "all_sensors" ? INVENTORY_SYSTEMS : UTILITY_SYSTEMS;
+  }
+
   sources(system) {
     const stateMap = this._hass && this._hass.states || {};
-    const exact = exactIds(this._config, system);
+    const exact = system.entity_ids && system.entity_ids.length ? system.entity_ids : exactIds(this._config, system.id);
     return Object.values(stateMap).filter((entity) => {
       if (!/^sensor\./i.test(entity.entity_id)) return false;
       if (exact) return exact.includes(entity.entity_id);
-      return rules[system].test(entity.entity_id);
+      if (this._config.inventory_mode === "all_sensors") return categoryId(entity.entity_id) === system.id;
+      return rules[system.id] && rules[system.id].test(entity.entity_id);
     }).sort((a, b) => name(a).localeCompare(name(b)));
   }
 
   render() {
-    const system = SYSTEMS.find((item) => item.id === this._selected) || SYSTEMS[0];
-    const sources = this.sources(system.id);
+    const systems = this.systems();
+    const system = systems.find((item) => item.id === this._selected) || systems[0];
+    this._selected = system.id;
+    const sources = this.sources(system);
     const primary = sources.find(available) || sources[0];
     const cost = sources.find(money) || sources.find((entity) => /cost/i.test(entity.entity_id));
     const weekly = Array.isArray(this._config.archive_weekly_values && this._config.archive_weekly_values[system.id])
@@ -101,7 +124,7 @@ class OrielCard extends HTMLElement {
       </style>
       <article class="card">
         <header><div><div class="brand">Oriel</div><div class="sub">Aldworth · Home Assistant card</div></div><div class="state"><i class="dot"></i>read only</div></header>
-        <nav class="tabs" aria-label="Oriel systems">${SYSTEMS.map((item) => `<button class="tab" data-system="${item.id}" aria-selected="${item.id === system.id}">${item.icon} ${item.label}</button>`).join("")}</nav>
+        <nav class="tabs" aria-label="Oriel systems">${systems.map((item) => `<button class="tab" data-system="${item.id}" aria-selected="${item.id === system.id}">${item.icon} ${item.label}</button>`).join("")}</nav>
         <section class="main"><div class="hero"><div><p class="eyebrow">Current system</p><h2>${esc(system.label)}</h2></div><div class="metric"><span>${cost ? "Published cost" : "Live source"}</span><strong>${esc(cost ? display(cost) : display(primary))}</strong></div></div>${weekly.length ? `<div class="timeline"><p class="eyebrow">Recorded weeks</p>${weekly.map((raw, index) => { const number = Number(raw); const ratio = Number.isFinite(number) ? Math.max(3, Math.round(number / max * 100)) : 0; return `<div class="week"><span>${index === 0 ? "Latest" : `${index} wk ago`}</span><span class="track"><i class="bar" style="width:${ratio}%"></i></span><strong>${esc(format(number, system.unit))}${Number.isFinite(Number(weeklyCosts[index])) ? `<small class="cost">${esc(format(Number(weeklyCosts[index]), "GBP", true))}</small>` : ""}</strong></div>`; }).join("")}</div>` : `<div class="empty">No imported weekly record is configured for this system. Live source states remain visible below.</div>`}</section>
         <section class="sources"><div class="heading"><h3>Current sources</h3><span>${sources.filter(available).length}/${sources.length} available</span></div><div class="grid">${sources.length ? sources.map((entity) => `<div class="source"><b title="${esc(name(entity))}">${esc(name(entity))}</b><span>${esc(display(entity))}</span><small>${esc(entity.entity_id)}</small></div>`).join("") : `<div class="empty">No approved source in this system.</div>`}</div></section>
         ${allSensors.length ? `<details ${this._expanded ? "open" : ""}><summary>All approved Aldworth sensors · ${allSensors.filter(available).length}/${allSensors.length} available</summary><div class="catalog">${Object.entries(groups).sort(([a],[b]) => a.localeCompare(b)).map(([label, entries]) => `<h4>${esc(label)} · ${entries.length}</h4><div class="grid">${entries.sort((a,b) => name(a).localeCompare(name(b))).map((entity) => `<div class="source"><b title="${esc(name(entity))}">${esc(name(entity))}</b><span>${esc(display(entity))}</span><small>${esc(entity.entity_id)}</small></div>`).join("")}</div>`).join("")}</div></details>` : ""}

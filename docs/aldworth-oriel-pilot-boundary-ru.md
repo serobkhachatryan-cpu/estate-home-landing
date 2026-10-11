@@ -31,7 +31,7 @@
 |---|---|
 | Интерфейс | Один или оба независимых нативных интерфейса: `panel_custom` Oriel в sidebar по адресу `/oriel` и `custom:oriel-card` в обычном Lovelace dashboard. Card не читает panel и panel не читает card: оба получают states из авторизованной HA-сессии |
 | Тип данных | Текущие состояния согласованных сущностей из `hass.states`; плюс не более шести недель Recorder history **одной выбранной** allowlisted-сущности через уже авторизованную WebSocket-сессию HA (`history/history_during_period`, `minimal_response: true`, `no_attributes: true`) |
-| Представление | Четыре weekly tabs: Electricity, Water, Fuel и Power; плюс закрытый по умолчанию полный каталог всех `sensor.*` источников Aldworth, доступный только HA administrator при явно включённом `inventory_mode: all_sensors`. Panel показывает Recorder weekly timeline; card отображает configured/imported weekly values и live states в dashboard. В обоих случаях источник, entity ID, текущее значение, unit и `Unavailable` / `No record` не подменяются догадкой |
+| Представление | Panel сохраняет четыре weekly tabs: Electricity, Water, Fuel и Power. Card по умолчанию показывает те же utilities, а при `inventory_mode: all_sensors` строит tabs по всем sensor-категориям (включая Climate, Security, Network и Other); администратор также может задать точные `sensor_groups`. Full catalogue доступен только HA administrator. Panel показывает Recorder weekly timeline; card отображает configured/imported weekly values и live states в dashboard. В обоих случаях источник, entity ID, текущее значение, unit и `Unavailable` / `No record` не подменяются догадкой |
 | Финансовые состояния | Только индивидуальные monetary/cost состояния, уже опубликованные Home Assistant; без вычисляемой суммы, тарифа или прогноза от Oriel |
 | История | Для weekly timeline — только ограниченный запрос Recorder одной выбранной сущности; bulk import/export Recorder запрещён. История и live-state не смешиваются без явной маркировки |
 | Доступ | Авторизованные пользователи Home Assistant в пределах их собственной HA-сессии; на строгом пилоте - администратор Home Assistant или конкретно письменно утверждённые named users |
@@ -185,7 +185,7 @@ owner-approved data flow.
 ### 9.2 Change Request обязателен для
 
 - добавления/удаления любого entity ID;
-- включения `inventory_mode: all_sensors`, изменения списка пользователей dashboard или снятия admin-only защиты;
+- включения `inventory_mode: all_sensors`, добавления/изменения `sensor_groups`, изменения списка пользователей dashboard или снятия admin-only защиты;
 - изменения data classification или аудитории;
 - изменения от read-only к control;
 - любой интеграции с облаком, W3DS, внешним сайтом, analytics, bridge или API;
