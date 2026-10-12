@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Oriel card · isolated statistics playground</title>
+    <script type="module" src="./oriel-card.js"></script>
+    <style>
+      body { margin: 0; background: #e7e1d7; }
+      .tools { position: fixed; z-index: 2; right: 16px; bottom: 16px; max-width: min(560px, calc(100vw - 32px)); padding: 13px; border: 1px solid #c7b79e; border-radius: 15px; background: #fffaf0; box-shadow: 0 10px 28px rgba(28,42,46,.18); color: #243f51; font: 13px/1.35 system-ui,sans-serif; }
+      .tools strong { display: block; margin-bottom: 7px; } .tools button { margin: 4px 5px 0 0; border: 0; border-radius: 8px; padding: 8px 10px; color: #fff; background: #15344a; cursor: pointer; font: inherit; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <oriel-card id="card"></oriel-card>
+    <aside class="tools">
+      <strong>Isolated statistics playground</strong>
+      Synthetic fixtures only — no Aldworth data, credentials, devices or network calls are used.
+      <div><button data-scenario="normal">Recorded history</button><button data-scenario="gap">Missing week</button><button data-scenario="unavailable">Unavailable source</button></div>
+    </aside>
+    <script type="module">
+      const card = document.querySelector('#card');
+      const iso = (daysAgo) => new Date(Date.now() - daysAgo * 86400000).toISOString();
+      const state = (entity_id, value, friendly_name, unit, device_class) => ({ entity_id, state: String(value), attributes: { friendly_name, unit_of_measurement: unit, device_class }, last_changed: iso(0), last_updated: iso(0) });
+      const record = (entity_id, values) => values.map(([daysAgo, value]) => ({ entity_id, state: String(value), last_changed: iso(daysAgo), last_updated: iso(daysAgo) }));
+      const config = {
+        type: 'custom:oriel-card', statistics: true,
+        entity_ids: {
+          electricity: ['sensor.fixture_electricity_energy'],
+          water: ['sensor.fixture_water_total'],
+          fuel: ['sensor.fixture_fuel_volume'],
+          power: ['sensor.fixture_ups_battery'],
+        },
+      };
+      const normalStates = () => ({
+        'sensor.fixture_electricity_energy': state('sensor.fixture_electricity_energy', 4130, 'Fixture electricity meter', 'kWh', 'energy'),
+        'sensor.fixture_water_total': state('sensor.fixture_water_total', 125400, 'Fixture water meter', 'L', 'volume'),
+        'sensor.fixture_fuel_volume': state('sensor.fixture_fuel_volume', 640, 'Fixture fuel tank', 'L', 'volume'),
+        'sensor.fixture_ups_battery': state('sensor.fixture_ups_battery', 96, 'Fixture UPS battery', '%', 'battery'),
+        'sensor.technical_diagnostic_temperature': state('sensor.technical_diagnostic_temperature', 92, 'Irrelevant diagnostic', '°C', 'temperature'),
+      });
+      const histories = (scenario) => ({
+        'sensor.fixture_electricity_energy': record('sensor.fixture_electricity_energy', scenario === 'gap'
+          ? [[42, 3820], [35, 3870], [28, 3925], [14, 4040], [7, 4090], [1, 4130]]
+          : [[42, 3820], [38, 3850], [35, 3870], [31, 3900], [28, 3925], [24, 3955], [21, 3980], [17, 4010], [14, 4040], [10, 4065], [7, 4090], [3, 4110], [1, 4130]]),
+        'sensor.fixture_water_total': record('sensor.fixture_water_total', [[42, 121200], [35, 121900], [28, 122600], [21, 123300], [14, 124000], [7, 124700], [1, 125400]]),
+        'sensor.fixture_fuel_volume': record('sensor.fixture_fuel_volume', [[42, 780], [35, 752], [28, 727], [21, 704], [14, 681], [7, 657], [1, 640]]),
+        'sensor.fixture_ups_battery': record('sensor.fixture_ups_battery', [[42, 100], [35, 99], [28, 100], [21, 98], [14, 99], [7, 97], [1, 96]]),
+      });
+      const load = (scenario) => {
+        const states = normalStates();
+        if (scenario === 'unavailable') states['sensor.fixture_electricity_energy'] = state('sensor.fixture_electricity_energy', 'unavailable', 'Fixture electricity meter', 'kWh', 'energy');
+        card.setConfig(config);
+        card.hass = { states, callWS: async ({ entity_ids }) => ({ [entity_ids[0]]: histories(scenario)[entity_ids[0]] || [] }) };
+      };
+      document.querySelectorAll('[data-scenario]').forEach((button) => button.addEventListener('click', () => load(button.dataset.scenario)));
+      load('normal');
+    </script>
+  </body>
+</html>
