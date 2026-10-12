@@ -78,11 +78,24 @@ const monday = (date) => {
   return result;
 };
 const zonedParts = (date, timeZone) => Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date).filter((part) => part.type !== "literal").map((part) => [part.type, Number(part.value)]));
+const zonedMidnight = (year, month, day, timeZone) => {
+  // Convert a calendar date to midnight in the selected timezone. A raw UTC
+  // midnight is 01:00 in London during BST, which would make Recorder
+  // statistics silently span the wrong UK calendar week.
+  const localMidnight = Date.UTC(year, month - 1, day);
+  let epoch = localMidnight;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const parts = zonedParts(new Date(epoch), timeZone);
+    const utcOffset = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute) - epoch;
+    epoch = localMidnight - utcOffset;
+  }
+  return new Date(epoch);
+};
 const zonedMonday = (date, timeZone) => {
   const parts = zonedParts(date, timeZone);
   const utcDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
   utcDate.setUTCDate(utcDate.getUTCDate() - (utcDate.getUTCDay() === 0 ? 6 : utcDate.getUTCDay() - 1));
-  return utcDate;
+  return zonedMidnight(utcDate.getUTCFullYear(), utcDate.getUTCMonth() + 1, utcDate.getUTCDate(), timeZone);
 };
 const weekRange = (index, anchor = new Date(), timeZone = null) => {
   if (timeZone) {
@@ -185,6 +198,11 @@ class OrielCard extends HTMLElement {
   setConfig(config) {
     if (!config || typeof config !== "object") throw new Error("Oriel card requires a configuration object");
     this._config = config;
+    // A card editor can replace an archive anchor or timezone for the same
+    // entity. Recorder samples from the preceding configuration must not be
+    // reused for that new time range.
+    this._history.clear();
+    this._historyLoading.clear();
     this.queueRender();
   }
 
@@ -208,11 +226,14 @@ class OrielCard extends HTMLElement {
 
   sourceList(system, key = "entity_ids") {
     const stateMap = this._hass && this._hass.states || {};
-    const explicit = key === "entity_ids" && system.entity_ids && system.entity_ids.length ? system.entity_ids : explicitIds(this._config, key, system.id);
+    const explicit = key === "entity_ids" && Array.isArray(system.entity_ids) ? system.entity_ids : explicitIds(this._config, key, system.id);
+    // This card is intentionally allowlist-only. Regex discovery belongs only
+    // in the administrator catalogue (`show_catalog: true`), never in a
+    // viewer-facing weekly ribbon.
+    if (!Array.isArray(explicit)) return [];
     return Object.values(stateMap).filter((entity) => {
       if (!/^sensor\./i.test(entity.entity_id)) return false;
-      if (explicit) return explicit.includes(entity.entity_id);
-      return key === "entity_ids" && rules[system.id] && rules[system.id].test(entity.entity_id);
+      return explicit.includes(entity.entity_id);
     }).sort((a, b) => sourcePriority(system, b) - sourcePriority(system, a) || name(a).localeCompare(name(b)));
   }
 
@@ -298,23 +319,42 @@ class OrielCard extends HTMLElement {
     const configuredCostDays = this.archiveValues("archive_weekly_cost_matching_days", system.id);
     const configuredStarts = this._config.archive_week_starts && Array.isArray(this._config.archive_week_starts[system.id])
       ? this._config.archive_week_starts[system.id] : [];
+    const explicitCostIds = explicitIds(this._config, "cost_entity_ids", system.id) || [];
+    const configuredCostLabel = this._config.archive_cost_source_labels && this._config.archive_cost_source_labels[system.id]
+      ? String(this._config.archive_cost_source_labels[system.id]).trim() : "";
+    const hasConfiguredValues = configuredValues.length > 0;
+    const startsAligned = !configuredStarts.length || (configuredStarts.length === configuredValues.length && configuredStarts.every((start, index) => configuredWeekDetails(start, index)));
+    const daysAligned = configuredDays.length === configuredValues.length;
+    const costsAligned = hasConfiguredValues && configuredCosts.length === configuredValues.length && configuredCostDays.length === configuredValues.length;
+    const plansAligned = hasConfiguredValues && configuredPlans.length === configuredValues.length;
+    const verifiedCostConfigured = costsAligned && explicitCostIds.length > 0 && Boolean(configuredCostLabel);
+    const archiveWarnings = [];
+    if (hasConfiguredValues && !startsAligned) archiveWarnings.push("archive dates are not aligned to the weekly records");
+    if (hasConfiguredValues && !daysAligned) archiveWarnings.push("usage-day coverage is unknown");
+    if (configuredCosts.length && !verifiedCostConfigured) archiveWarnings.push("tariff estimate withheld: approve aligned cost sources, matching days and a source label");
+    if (configuredPlans.length && !plansAligned) archiveWarnings.push("plan values withheld: they are not aligned to the weekly records");
     const requestedWeeks = safeWeekCount(this._config.history_weeks);
     const liveHistory = historySource ? this._history.get(historySource.entity_id) || [] : [];
     const dynamicValues = historySource && this.statisticsEnabled()
       ? Array.from({ length: requestedWeeks }, (_, index) => historyWeek(weekRange(index, this.statisticsAnchor(), this.statisticsTimeZone()), liveHistory, historySource)) : [];
-    const valueSeries = configuredValues.length ? configuredValues : dynamicValues;
-    const seriesLength = Math.max(valueSeries.length, configuredCosts.length, configuredPlans.length);
-    const hasArchive = configuredValues.length || configuredCosts.length || configuredPlans.length;
+    const valueSeries = hasConfiguredValues ? configuredValues : dynamicValues;
+    const seriesLength = valueSeries.length;
+    const hasArchive = hasConfiguredValues;
     const weekAnchor = hasArchive ? this.archiveAnchor() : this.statisticsAnchor();
     const weekTimeZone = hasArchive ? this.archiveTimeZone() : this.statisticsTimeZone() || "Europe/London";
-    const weeks = Array.from({ length: seriesLength }, (_, index) => ({
-      ...(configuredWeekDetails(configuredStarts[index], index) || weekDetails(index, weekAnchor, weekTimeZone)),
-      value: valueSeries[index] ?? null,
-      cost: configuredCosts[index] ?? null,
-      plan: configuredPlans[index] ?? null,
-      days: daysFor(configuredDays[index]) ?? (configuredValues.length ? 7 : null),
-      costDays: daysFor(configuredCostDays[index]),
-    }));
+    const weeks = Array.from({ length: seriesLength }, (_, index) => {
+      const recordedValue = valueSeries[index] ?? null;
+      const costDays = daysFor(configuredCostDays[index]);
+      const verifiedWeekCost = verifiedCostConfigured && finite(recordedValue) && finite(configuredCosts[index]) && costDays !== null && costDays > 0;
+      return {
+        ...(configuredWeekDetails(configuredStarts[index], index) || weekDetails(index, weekAnchor, weekTimeZone)),
+        value: recordedValue,
+        cost: verifiedWeekCost ? configuredCosts[index] : null,
+        plan: plansAligned && finite(configuredPlans[index]) ? configuredPlans[index] : null,
+        days: hasConfiguredValues ? daysFor(configuredDays[index]) : null,
+        costDays: verifiedWeekCost ? costDays : null,
+      };
+    });
     const safeWeek = Math.max(0, Math.min(this._selectedWeek, Math.max(weeks.length - 1, 0)));
     this._selectedWeek = safeWeek;
     const selectedWeek = weeks[safeWeek] || null;
@@ -324,20 +364,19 @@ class OrielCard extends HTMLElement {
     const recordedUseTotal = sum(weeks.map((week) => week.value));
     const costCount = count(weeks.map((week) => week.cost));
     const planCount = count(weeks.map((week) => week.plan));
-    const hasCost = costCount > 0;
-    const hasPlan = planCount > 0;
-    const fact = hasCost ? actualCostTotal : recordedUseTotal;
-    const factMoney = hasCost;
-    const comparisonTone = hasCost && hasPlan ? differenceTone(actualCostTotal, planTotal) : "recorded";
-    const totalDifference = hasCost && hasPlan ? actualCostTotal - planTotal : null;
-    const selectedFact = selectedWeek && finite(selectedWeek.cost) ? selectedWeek.cost : selectedWeek && finite(selectedWeek.value) ? selectedWeek.value : null;
-    const selectedFactMoney = Boolean(selectedWeek && finite(selectedWeek.cost));
-    const selectedDifference = selectedWeek && finite(selectedWeek.cost) && finite(selectedWeek.plan) ? selectedWeek.cost - selectedWeek.plan : null;
+    const hasCompleteCostSeries = weeks.length > 0 && costCount === weeks.length;
+    const hasPlan = hasCompleteCostSeries && planCount === weeks.length;
+    const fact = hasCompleteCostSeries ? actualCostTotal : recordedUseTotal;
+    const factMoney = hasCompleteCostSeries;
+    const comparisonTone = hasCompleteCostSeries && hasPlan ? differenceTone(actualCostTotal, planTotal) : "recorded";
+    const totalDifference = hasCompleteCostSeries && hasPlan ? actualCostTotal - planTotal : null;
+    const selectedFact = selectedWeek && hasCompleteCostSeries && finite(selectedWeek.cost) ? selectedWeek.cost : selectedWeek && finite(selectedWeek.value) ? selectedWeek.value : null;
+    const selectedFactMoney = Boolean(selectedWeek && hasCompleteCostSeries && finite(selectedWeek.cost));
+    const selectedDifference = selectedWeek && hasCompleteCostSeries && finite(selectedWeek.cost) && finite(selectedWeek.plan) ? selectedWeek.cost - selectedWeek.plan : null;
     const selectedTone = selectedDifference !== null && selectedWeek ? differenceTone(selectedWeek.cost, selectedWeek.plan) : "recorded";
-    const barValues = weeks.flatMap((week) => [hasCost ? week.cost : week.value, hasCost ? week.plan : null]).filter(finite);
+    const barValues = weeks.flatMap((week) => [hasCompleteCostSeries ? week.cost : week.value, hasCompleteCostSeries ? week.plan : null]).filter(finite);
     const barMax = Math.max(1, ...barValues.map((item) => Math.abs(item)));
-    const costLabel = this._config.archive_cost_source_labels && this._config.archive_cost_source_labels[system.id]
-      ? String(this._config.archive_cost_source_labels[system.id]) : "Recorded Home Assistant energy cost";
+    const costLabel = configuredCostLabel || "No approved tariff source label";
     const liveSourceCards = [...sources.map((entity) => ({ entityId: entity.entity_id, label: name(entity), value: display(entity), role: "Approved measurement", live: available(entity) })), ...costSources.filter((entity) => !sources.some((source) => source.entity_id === entity.entity_id)).map((entity) => ({ entityId: entity.entity_id, label: name(entity), value: display(entity), role: "Approved cost source", live: available(entity) }))];
     const archiveSourceDetails = this._config.archive_source_details && Array.isArray(this._config.archive_source_details[system.id])
       ? this._config.archive_source_details[system.id] : [];
@@ -357,7 +396,7 @@ class OrielCard extends HTMLElement {
     const oldest = timelineWeeks[0];
     const newest = timelineWeeks.at(-1);
     const focusMeta = selectedWeek
-      ? `${selectedWeek.days === null ? "Recorded week" : `${selectedWeek.days} recorded day${selectedWeek.days === 1 ? "" : "s"}`} · W${selectedWeek.isoWeek}`
+      ? `${selectedWeek.days === null ? "Coverage unknown" : `${selectedWeek.days} recorded day${selectedWeek.days === 1 ? "" : "s"}`} · W${selectedWeek.isoWeek}`
       : "No recorded week";
     this.shadowRoot.innerHTML = `
       <style>
@@ -379,9 +418,9 @@ class OrielCard extends HTMLElement {
             <p class="eyebrow">${weeks.length} week${weeks.length === 1 ? "" : "s"} to focus · ${esc(oldest.range)} → ${esc(newest.range)}</p>
             <div class="summary-grid">
               <div class="summary"><span>Plan · ${weeks.length}W</span><strong>${hasPlan ? esc(format(planTotal, "", true)) : "—"}</strong></div>
-              <div class="summary"><span>${hasCost ? `Tariff estimate · ${costCount}W` : `Recorded use · ${count(weeks.map((week) => week.value))}W`}</span><strong>${esc(format(fact, sourceUnit, factMoney))}</strong></div>
+              <div class="summary"><span>${hasCompleteCostSeries ? `Tariff estimate · ${costCount}W` : `Recorded use · ${count(weeks.map((week) => week.value))}W`}</span><strong>${esc(format(fact, sourceUnit, factMoney))}</strong></div>
             </div>
-            <p class="comparison ${comparisonTone}">${hasPlan && hasCost ? `<b>${differenceLabel(comparisonTone)}</b> ${totalDifference >= 0 ? "+" : ""}${esc(format(totalDifference, "", true))} vs plan` : hasCost ? `<b>Recorded cost</b> · ${esc(costLabel)} · no approved plan` : "No approved recorded cost or plan for this system."}</p>
+            <p class="comparison ${comparisonTone}">${hasPlan && hasCompleteCostSeries ? `<b>${differenceLabel(comparisonTone)}</b> ${totalDifference >= 0 ? "+" : ""}${esc(format(totalDifference, "", true))} vs plan` : hasCompleteCostSeries ? `<b>Tariff estimate</b> · ${esc(costLabel)} · no approved plan` : archiveWarnings.length ? `<b>Coverage note</b> · ${esc(archiveWarnings.join(" · "))}` : "No approved recorded cost or plan for this system."}</p>
           </section>
           <section class="focus">
             <div class="focus-head">
@@ -391,13 +430,13 @@ class OrielCard extends HTMLElement {
             <div class="focus-metrics">
               <div class="mini"><span>Week plan</span><strong>${selectedWeek && finite(selectedWeek.plan) ? esc(format(selectedWeek.plan, "", true)) : "—"}</strong><small>${selectedWeek && finite(selectedWeek.plan) ? "Approved plan" : "Not configured"}</small></div>
               <div class="mini"><span>${selectedFactMoney ? "Tariff estimate" : "Recorded use"}</span><strong>${selectedFact === null ? "—" : esc(format(selectedFact, sourceUnit, selectedFactMoney))}</strong><small>${selectedFactMoney && selectedWeek && selectedWeek.costDays !== null ? `${selectedWeek.costDays} matching day${selectedWeek.costDays === 1 ? "" : "s"}` : selectedWeek && selectedWeek.days !== null ? `${selectedWeek.days} recorded day${selectedWeek.days === 1 ? "" : "s"}` : "Recorded source"}</small></div>
-              <div class="mini"><span>${selectedFactMoney ? "Recorded use" : "Cost"}</span><strong>${selectedFactMoney && selectedWeek && finite(selectedWeek.value) ? esc(format(selectedWeek.value, sourceUnit)) : selectedWeek && finite(selectedWeek.cost) ? esc(format(selectedWeek.cost, "", true)) : "—"}</strong><small>${selectedFactMoney ? "Approved meter" : hasCost ? costLabel : "No cost record"}</small></div>
+              <div class="mini"><span>Cash</span><strong>—</strong><small>No verified cash source</small></div>
             </div>
           </section>
-          <section class="timeline-wrap"><p class="timeline-label">Recorded weeks · select a period · yellow line is focus</p><div class="timeline-frame"><i class="focus-line" aria-hidden="true"></i><div class="timeline" role="listbox" aria-label="${esc(system.label)} weekly record">${timelineWeeks.map((week) => { const primary = hasCost ? week.cost : week.value; const plan = hasCost ? week.plan : null; const ratio = finite(primary) ? Math.max(3, Math.round(Math.abs(primary) / barMax * 100)) : 0; const planRatio = finite(plan) ? Math.max(0, Math.min(100, Math.round(Math.abs(plan) / barMax * 100))) : null; const tone = finite(primary) && finite(plan) ? differenceTone(primary, plan) : "recorded"; const focused = week.index === safeWeek; const supporting = hasCost && finite(week.value) ? `${format(week.value, sourceUnit)}${week.costDays !== null ? ` · ${week.costDays}d matched` : ""}` : ""; return `<button class="week" type="button" role="option" data-week="${week.index}" ${focused ? "data-focus-week aria-current=\"true\" aria-selected=\"true\"" : "aria-selected=\"false\""} aria-label="${esc(`${week.calendar}: ${primary === null ? "no record" : format(primary, sourceUnit, hasCost)}`)}"><span class="week-date">${esc(week.range)}<small>Mon–Sun · W${week.isoWeek}${week.days !== null ? ` · ${week.days}d` : ""}</small></span><span class="track"><i class="bar ${tone}" style="width:${ratio}%"></i>${planRatio === null ? "" : `<i class="plan-tick" style="left:${planRatio}%"></i>`}</span><span class="week-value">${finite(primary) ? `<strong>${esc(format(primary, sourceUnit, hasCost))}</strong>${supporting ? `<small>${esc(supporting)}</small>` : ""}` : `<strong class="no-record">No record</strong>`}</span></button>`; }).join("")}</div></div></section>
+          <section class="timeline-wrap"><p class="timeline-label">Recorded weeks · select a period · yellow line is focus</p><div class="timeline-frame"><i class="focus-line" aria-hidden="true"></i><div class="timeline" role="listbox" aria-label="${esc(system.label)} weekly record">${timelineWeeks.map((week) => { const primary = hasCompleteCostSeries ? week.cost : week.value; const plan = hasCompleteCostSeries ? week.plan : null; const ratio = finite(primary) ? Math.max(3, Math.round(Math.abs(primary) / barMax * 100)) : 0; const planRatio = finite(plan) ? Math.max(0, Math.min(100, Math.round(Math.abs(plan) / barMax * 100))) : null; const tone = finite(primary) && finite(plan) ? differenceTone(primary, plan) : "recorded"; const focused = week.index === safeWeek; const supporting = hasCompleteCostSeries && finite(week.value) ? `Recorded use · ${format(week.value, sourceUnit)}${week.costDays !== null ? ` · ${week.costDays}d matched` : ""}` : !hasCompleteCostSeries && finite(week.cost) ? `${format(week.cost, "", true)} tariff estimate${week.costDays !== null ? ` · ${week.costDays}d matched` : ""}` : ""; return `<button class="week" type="button" role="option" data-week="${week.index}" ${focused ? "data-focus-week aria-current=\"true\" aria-selected=\"true\"" : "aria-selected=\"false\""} aria-label="${esc(`${week.calendar}: ${primary === null ? "no record" : format(primary, sourceUnit, hasCompleteCostSeries)}`)}"><span class="week-date">${esc(week.range)}<small>Mon–Sun · W${week.isoWeek}${week.days !== null ? ` · ${week.days}d` : ""}</small></span><span class="track"><i class="bar ${tone}" style="width:${ratio}%"></i>${planRatio === null ? "" : `<i class="plan-tick" style="left:${planRatio}%"></i>`}</span><span class="week-value">${finite(primary) ? `<strong>${esc(format(primary, sourceUnit, hasCompleteCostSeries))}</strong>${supporting ? `<small>${esc(supporting)}</small>` : ""}` : `<strong class="no-record">No record</strong>`}</span></button>`; }).join("")}</div></div></section>
           <div class="controls"><button type="button" data-jump="oldest" data-oldest="${weeks.length - 1}">Oldest</button><button type="button" data-jump="latest">Latest</button></div>
         ` : `<section class="empty">${historyLoading ? "Loading Recorder statistics for the approved source…" : this.statisticsEnabled() ? "No recorded statistics are available for the approved source yet." : "Weekly statistics are disabled. Add statistics: true to this card configuration."}</section>`}
-        <section class="sources"><div class="sources-head"><h3>Sources used</h3><span>${sourceCards.filter((source) => source.live).length} live · ${sourceCards.length} approved</span></div>${sourceCards.length ? `<div class="source-grid">${sourceCards.map((source) => `<div class="source"><span class="role">${esc(source.role)}</span><b title="${esc(source.label)}">${esc(source.label)}</b><span class="source-value">${esc(source.value)}</span><small>${esc(source.entityId)}</small></div>`).join("")}</div>` : `<div class="empty">No approved source in this system.</div>`}<p class="source-note">${hasCost ? `${esc(costLabel)} is shown only for the matching archived weeks; it is not an invoice or cash-spend ledger.` : "Add approved cost sources and matching archived weekly costs only when their source and coverage have been validated."}</p></section>
+        <section class="sources"><div class="sources-head"><h3>Sources used</h3><span>${sourceCards.filter((source) => source.live).length} live · ${sourceCards.length} approved</span></div>${sourceCards.length ? `<div class="source-grid">${sourceCards.map((source) => `<div class="source"><span class="role">${esc(source.role)}</span><b title="${esc(source.label)}">${esc(source.label)}</b><span class="source-value">${esc(source.value)}</span><small>${esc(source.entityId)}</small></div>`).join("")}</div>` : `<div class="empty">No approved source in this system.</div>`}<p class="source-note">${hasCompleteCostSeries ? `${esc(costLabel)} is shown only for the matching archived weeks; it is not an invoice or cash-spend ledger.` : archiveWarnings.length ? esc(archiveWarnings.join(" · ")) : "Add approved cost sources and matching archived weekly costs only when their source and coverage have been validated."}</p></section>
         ${allSensors.length ? `<details ${this._expanded ? "open" : ""}><summary>Full administrator sensor catalogue · ${allSensors.filter(available).length}/${allSensors.length} available</summary><div class="catalog">${Object.entries(groups).sort(([a,], [b,]) => a.localeCompare(b)).map(([label, entries]) => `<h4>${esc(label)} · ${entries.length}</h4><div class="source-grid">${entries.sort((a, b) => name(a).localeCompare(name(b))).map((entity) => `<div class="source"><b title="${esc(name(entity))}">${esc(name(entity))}</b><span class="source-value">${esc(display(entity))}</span><small>${esc(entity.entity_id)}</small></div>`).join("")}</div>`).join("")}</div></details>` : ""}
         <div class="footnote">Oriel reads approved Home Assistant states already present in this signed-in dashboard. ${this.statisticsEnabled() ? "Weekly consumption statistics use a read-only Recorder query for the selected approved source only." : "No Recorder history is requested."} It has no control buttons, external requests, tokens or service calls.</div>
       </article>`;
