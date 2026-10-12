@@ -1,7 +1,11 @@
 /*
  * Oriel Lovelace card — a read-only companion to the full Oriel panel.
  * Add as `type: custom:oriel-card` to any Home Assistant dashboard.
- * No network calls, storage, token or HA service calls are used.
+ *
+ * It deliberately uses only states already provided to the signed-in Home
+ * Assistant user and (when expressly enabled) a read-only Recorder query for
+ * an approved consumption source. No external request, token, storage or HA
+ * service call is made here.
  */
 
 const UTILITY_SYSTEMS = [
@@ -29,21 +33,28 @@ const rules = {
   network: /(?:cpu_usage|memory_usage|device_status|poe_power|starlink|wifi|switch|gateway|_ap_)/i,
 };
 
-const HISTORY_WEEKS = 6;
-
+const DEFAULT_HISTORY_WEEKS = 6;
+const DAY_MS = 86400000;
 const esc = (value) => String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 const attrs = (entity) => entity && entity.attributes && typeof entity.attributes === "object" ? entity.attributes : {};
 const name = (entity) => attrs(entity).friendly_name || entity.entity_id.replace(/^.*?\./, "").replace(/_/g, " ");
 const available = (entity) => !["", "unknown", "unavailable", "none"].includes(String(entity && entity.state || "").toLowerCase());
 const value = (entity) => Number.parseFloat(String(entity && entity.state || ""));
+const finite = (raw) => typeof raw === "number" && Number.isFinite(raw);
+const numeric = (raw) => {
+  const parsed = typeof raw === "number" ? raw : Number.parseFloat(String(raw));
+  return Number.isFinite(parsed) ? parsed : null;
+};
+const sum = (items) => items.reduce((total, item) => total + (finite(item) ? item : 0), 0);
+const count = (items) => items.filter(finite).length;
 const money = (entity) => attrs(entity).device_class === "monetary" || /^(GBP|£)$/i.test(String(attrs(entity).unit_of_measurement || ""));
 const format = (raw, unit = "", isMoney = false) => {
-  if (!Number.isFinite(raw)) return "No data";
+  if (!Number.isFinite(raw)) return "—";
   if (isMoney) return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 2 }).format(raw);
   return new Intl.NumberFormat("en-GB", { maximumFractionDigits: Math.abs(raw) >= 100 ? 1 : 2 }).format(raw) + (unit ? ` ${unit}` : "");
 };
 const display = (entity) => !entity ? "No source" : !available(entity) ? "Unavailable" : format(value(entity), attrs(entity).unit_of_measurement || "", money(entity));
-const exactIds = (config, system) => Array.isArray(config.entity_ids && config.entity_ids[system]) ? config.entity_ids[system] : null;
+const explicitIds = (config, key, system) => Array.isArray(config[key] && config[key][system]) ? config[key][system] : null;
 const categoryId = (id) => {
   const source = String(id).toLowerCase();
   if (rules.water.test(source)) return "water";
@@ -66,46 +77,61 @@ const monday = (date) => {
   result.setDate(result.getDate() - (result.getDay() === 0 ? 6 : result.getDay() - 1));
   return result;
 };
-const zonedParts = (date, timeZone) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date).filter((part) => part.type !== 'literal').map((part) => [part.type, Number(part.value)]));
-const zonedMidnight = (year, month, day, timeZone) => {
-  let epoch = Date.UTC(year, month - 1, day);
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const parts = zonedParts(new Date(epoch), timeZone);
-    epoch -= Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute) - epoch;
-  }
-  return new Date(epoch);
-};
+const zonedParts = (date, timeZone) => Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date).filter((part) => part.type !== "literal").map((part) => [part.type, Number(part.value)]));
 const zonedMonday = (date, timeZone) => {
   const parts = zonedParts(date, timeZone);
   const utcDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
   utcDate.setUTCDate(utcDate.getUTCDate() - (utcDate.getUTCDay() === 0 ? 6 : utcDate.getUTCDay() - 1));
-  return zonedMidnight(utcDate.getUTCFullYear(), utcDate.getUTCMonth() + 1, utcDate.getUTCDate(), timeZone);
+  return utcDate;
 };
 const weekRange = (index, anchor = new Date(), timeZone = null) => {
   if (timeZone) {
-    const end = zonedMonday(anchor, timeZone); end.setUTCDate(end.getUTCDate() + 7 - index * 7);
-    const start = new Date(end); start.setUTCDate(start.getUTCDate() - 7);
-    return { start, end };
+    const endDate = zonedMonday(anchor, timeZone); endDate.setUTCDate(endDate.getUTCDate() + 7 - index * 7);
+    const start = new Date(endDate); start.setUTCDate(start.getUTCDate() - 7);
+    return { start, end: endDate };
   }
   const end = new Date(monday(anchor)); end.setDate(end.getDate() + 7 - index * 7);
   const start = new Date(end); start.setDate(start.getDate() - 7);
   return { start, end };
 };
-const calendarParts = (date, timeZone) => Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
-  timeZone: timeZone || 'Europe/London', year: 'numeric', month: 'short', day: 'numeric',
-}).formatToParts(date).filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
-const weekLabel = (index, anchor, timeZone) => {
-  // Work in local calendar dates rather than 24-hour intervals: that keeps
-  // Monday–Sunday labels correct at UK daylight-saving changes.
-  const local = zonedParts(anchor, timeZone || 'Europe/London');
-  const monday = new Date(Date.UTC(local.year, local.month - 1, local.day));
-  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7) - index * 7);
-  const sunday = new Date(monday); sunday.setUTCDate(sunday.getUTCDate() + 6);
-  const start = calendarParts(monday, 'UTC');
-  const end = calendarParts(sunday, 'UTC');
-  if (start.year === end.year && start.month === end.month) return `${start.day}–${end.day} ${end.month} ${end.year}`;
-  if (start.year === end.year) return `${start.day} ${start.month}–${end.day} ${end.month} ${end.year}`;
-  return `${start.day} ${start.month} ${start.year}–${end.day} ${end.month} ${end.year}`;
+const calendarParts = (date) => Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", year: "numeric", month: "short", day: "numeric", weekday: "short" }).formatToParts(date).filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+const isoDate = (date) => date.toISOString().slice(0, 10);
+const isoWeekNumber = (mondayDate) => {
+  const thursday = new Date(mondayDate); thursday.setUTCDate(thursday.getUTCDate() + 3);
+  const firstThursday = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 4));
+  firstThursday.setUTCDate(firstThursday.getUTCDate() + 3 - ((firstThursday.getUTCDay() + 6) % 7));
+  return 1 + Math.round((thursday - firstThursday) / (7 * DAY_MS));
+};
+const describeWeek = (start, index) => {
+  const end = new Date(start); end.setUTCDate(end.getUTCDate() + 6);
+  const first = calendarParts(start); const last = calendarParts(end);
+  const range = first.year === last.year && first.month === last.month
+    ? `${first.day}–${last.day} ${last.month} ${last.year}`
+    : first.year === last.year
+      ? `${first.day} ${first.month}–${last.day} ${last.month} ${last.year}`
+      : `${first.day} ${first.month} ${first.year}–${last.day} ${last.month} ${last.year}`;
+  return {
+    index,
+    start,
+    end,
+    startIso: isoDate(start),
+    endIso: isoDate(end),
+    isoWeek: isoWeekNumber(start),
+    range,
+    calendar: `Mon ${first.day} ${first.month} – Sun ${last.day} ${last.month} ${last.year}`,
+  };
+};
+const weekDetails = (index, anchor, timeZone) => {
+  const local = zonedParts(anchor, timeZone || "Europe/London");
+  const start = new Date(Date.UTC(local.year, local.month - 1, local.day));
+  start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7) - index * 7);
+  return describeWeek(start, index);
+};
+const configuredWeekDetails = (startIso, index) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(startIso || ""))) return null;
+  const start = new Date(`${startIso}T00:00:00.000Z`);
+  if (!Number.isFinite(start.getTime()) || start.getUTCDay() !== 1) return null;
+  return describeWeek(start, index);
 };
 const historyPoints = (response, entityId) => Array.isArray(response) ? (Array.isArray(response[0]) ? response[0] : response) : Array.isArray(response && response[entityId]) ? response[entityId] : [];
 const historyWeek = (range, history, entity) => {
@@ -124,12 +150,30 @@ const sourcePriority = (system, entity) => {
   if (money(entity)) score -= 30;
   return score;
 };
+const safeWeekCount = (raw) => {
+  const parsed = Number.parseInt(String(raw), 10);
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(parsed, 104)) : DEFAULT_HISTORY_WEEKS;
+};
+const daysFor = (raw) => {
+  const parsed = Number.parseInt(String(raw), 10);
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(parsed, 7)) : null;
+};
+const differenceTone = (fact, plan) => {
+  if (!finite(fact) || !finite(plan)) return "recorded";
+  const difference = fact - plan;
+  const tolerance = Math.max(Math.abs(plan) * .02, .01);
+  if (difference > tolerance) return "over";
+  if (difference < -tolerance) return "under";
+  return "on-plan";
+};
+const differenceLabel = (tone) => ({ over: "Over plan", under: "Under plan", "on-plan": "On plan", recorded: "Recorded" })[tone] || "Recorded";
 
 class OrielCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
     this._selected = "electricity";
+    this._selectedWeek = 0;
     this._expanded = false;
     this._hass = null;
     this._config = {};
@@ -145,7 +189,6 @@ class OrielCard extends HTMLElement {
   }
 
   set hass(hass) { this._hass = hass; this.queueRender(); }
-
   connectedCallback() { this.render(); }
 
   queueRender() {
@@ -154,7 +197,7 @@ class OrielCard extends HTMLElement {
     Promise.resolve().then(() => { this._renderQueued = false; this.render(); });
   }
 
-  getCardSize() { return this._expanded ? 18 : 8; }
+  getCardSize() { return this._expanded ? 24 : 15; }
 
   systems() {
     const custom = Array.isArray(this._config.sensor_groups) ? this._config.sensor_groups
@@ -163,13 +206,13 @@ class OrielCard extends HTMLElement {
     return custom.length ? custom : UTILITY_SYSTEMS;
   }
 
-  sources(system) {
+  sourceList(system, key = "entity_ids") {
     const stateMap = this._hass && this._hass.states || {};
-    const exact = system.entity_ids && system.entity_ids.length ? system.entity_ids : exactIds(this._config, system.id);
+    const explicit = key === "entity_ids" && system.entity_ids && system.entity_ids.length ? system.entity_ids : explicitIds(this._config, key, system.id);
     return Object.values(stateMap).filter((entity) => {
       if (!/^sensor\./i.test(entity.entity_id)) return false;
-      if (exact) return exact.includes(entity.entity_id);
-      return rules[system.id] && rules[system.id].test(entity.entity_id);
+      if (explicit) return explicit.includes(entity.entity_id);
+      return key === "entity_ids" && rules[system.id] && rules[system.id].test(entity.entity_id);
     }).sort((a, b) => sourcePriority(system, b) - sourcePriority(system, a) || name(a).localeCompare(name(b)));
   }
 
@@ -186,7 +229,7 @@ class OrielCard extends HTMLElement {
 
   statisticsTimeZone() {
     const configured = this._config.statistics && typeof this._config.statistics === "object" ? this._config.statistics.timezone : null;
-    try { if (configured) new Intl.DateTimeFormat('en-GB', { timeZone: configured }); } catch { return null; }
+    try { if (configured) new Intl.DateTimeFormat("en-GB", { timeZone: configured }); } catch { return null; }
     return configured || null;
   }
 
@@ -197,14 +240,14 @@ class OrielCard extends HTMLElement {
 
   archiveTimeZone() {
     const configured = this._config.archive_timezone;
-    try { if (configured) new Intl.DateTimeFormat('en-GB', { timeZone: configured }); } catch { return this.statisticsTimeZone() || 'Europe/London'; }
-    return configured || this.statisticsTimeZone() || 'Europe/London';
+    try { if (configured) new Intl.DateTimeFormat("en-GB", { timeZone: configured }); } catch { return this.statisticsTimeZone() || "Europe/London"; }
+    return configured || this.statisticsTimeZone() || "Europe/London";
   }
 
-  requestHistory(entity) {
+  requestHistory(entity, weeks) {
     if (!this.statisticsEnabled() || !entity || !this._hass || this._history.has(entity.entity_id) || this._historyLoading.has(entity.entity_id) || typeof this._hass.callWS !== "function") return;
     const anchor = this.statisticsAnchor();
-    const oldest = weekRange(HISTORY_WEEKS - 1, anchor, this.statisticsTimeZone()).start;
+    const oldest = weekRange(weeks - 1, anchor, this.statisticsTimeZone()).start;
     this._historyLoading.add(entity.entity_id);
     this._hass.callWS({ type: "history/history_during_period", start_time: oldest.toISOString(), end_time: anchor.toISOString(), entity_ids: [entity.entity_id], minimal_response: true, no_attributes: true })
       .then((response) => this._history.set(entity.entity_id, historyPoints(response, entity.entity_id)))
@@ -212,53 +255,153 @@ class OrielCard extends HTMLElement {
       .finally(() => { this._historyLoading.delete(entity.entity_id); this.render(); });
   }
 
+  archiveValues(key, systemId) {
+    const candidate = this._config[key] && this._config[key][systemId];
+    return Array.isArray(candidate) ? candidate.map(numeric) : [];
+  }
+
+  afterRender() {
+    this.shadowRoot.querySelectorAll("[data-system]").forEach((button) => button.addEventListener("click", () => {
+      this._selected = button.dataset.system;
+      this._selectedWeek = 0;
+      this.render();
+    }));
+    this.shadowRoot.querySelectorAll("[data-week]").forEach((button) => button.addEventListener("click", () => {
+      this._selectedWeek = Number.parseInt(button.dataset.week, 10) || 0;
+      this.render();
+    }));
+    this.shadowRoot.querySelectorAll("[data-jump]").forEach((button) => button.addEventListener("click", () => {
+      this._selectedWeek = button.dataset.jump === "oldest" ? Number.parseInt(button.dataset.oldest, 10) || 0 : 0;
+      this.render();
+    }));
+    const details = this.shadowRoot.querySelector("details");
+    if (details) details.addEventListener("toggle", () => { this._expanded = details.open; });
+    const focused = this.shadowRoot.querySelector("[data-focus-week]");
+    if (focused && typeof focused.scrollIntoView === "function") Promise.resolve().then(() => focused.scrollIntoView({ block: "center", behavior: "auto" }));
+  }
+
   render() {
     const systems = this.systems();
     const system = systems.find((item) => item.id === this._selected) || systems[0];
+    if (!system) return;
     this._selected = system.id;
-    const sources = this.sources(system);
-    const primary = sources.find(available) || sources[0];
-    const cost = sources.find(money) || sources.find((entity) => /cost/i.test(entity.entity_id));
+    const sources = this.sourceList(system);
+    const costSources = this.sourceList(system, "cost_entity_ids");
     const historySource = sources.filter((entity) => !money(entity)).sort((a, b) => sourcePriority(system, b) - sourcePriority(system, a))[0];
-    const weekly = Array.isArray(this._config.archive_weekly_values && this._config.archive_weekly_values[system.id])
-      ? this._config.archive_weekly_values[system.id] : [];
-    const weeklyCosts = Array.isArray(this._config.archive_weekly_costs && this._config.archive_weekly_costs[system.id])
-      ? this._config.archive_weekly_costs[system.id] : [];
+    const sourceUnit = historySource ? (attrs(historySource).unit_of_measurement || system.unit) : system.unit;
+    const configuredValues = this.archiveValues("archive_weekly_values", system.id);
+    const configuredCosts = this.archiveValues("archive_weekly_costs", system.id);
+    const configuredPlans = this.archiveValues("archive_weekly_plan_costs", system.id);
+    const configuredDays = this.archiveValues("archive_weekly_recorded_days", system.id).length
+      ? this.archiveValues("archive_weekly_recorded_days", system.id)
+      : this.archiveValues("archive_weekly_day_counts", system.id);
+    const configuredCostDays = this.archiveValues("archive_weekly_cost_matching_days", system.id);
+    const configuredStarts = this._config.archive_week_starts && Array.isArray(this._config.archive_week_starts[system.id])
+      ? this._config.archive_week_starts[system.id] : [];
+    const requestedWeeks = safeWeekCount(this._config.history_weeks);
     const liveHistory = historySource ? this._history.get(historySource.entity_id) || [] : [];
-    const dynamicWeekly = historySource && this.statisticsEnabled()
-      ? Array.from({ length: HISTORY_WEEKS }, (_, index) => historyWeek(weekRange(index, this.statisticsAnchor(), this.statisticsTimeZone()), liveHistory, historySource)) : [];
-    const weeklyValues = weekly.length ? weekly : dynamicWeekly;
-    const weekAnchor = weekly.length ? this.archiveAnchor() : this.statisticsAnchor();
-    const weekTimeZone = weekly.length ? this.archiveTimeZone() : this.statisticsTimeZone() || 'Europe/London';
-    const max = Math.max(1, ...weeklyValues.filter(Number.isFinite));
+    const dynamicValues = historySource && this.statisticsEnabled()
+      ? Array.from({ length: requestedWeeks }, (_, index) => historyWeek(weekRange(index, this.statisticsAnchor(), this.statisticsTimeZone()), liveHistory, historySource)) : [];
+    const valueSeries = configuredValues.length ? configuredValues : dynamicValues;
+    const seriesLength = Math.max(valueSeries.length, configuredCosts.length, configuredPlans.length);
+    const hasArchive = configuredValues.length || configuredCosts.length || configuredPlans.length;
+    const weekAnchor = hasArchive ? this.archiveAnchor() : this.statisticsAnchor();
+    const weekTimeZone = hasArchive ? this.archiveTimeZone() : this.statisticsTimeZone() || "Europe/London";
+    const weeks = Array.from({ length: seriesLength }, (_, index) => ({
+      ...(configuredWeekDetails(configuredStarts[index], index) || weekDetails(index, weekAnchor, weekTimeZone)),
+      value: valueSeries[index] ?? null,
+      cost: configuredCosts[index] ?? null,
+      plan: configuredPlans[index] ?? null,
+      days: daysFor(configuredDays[index]) ?? (configuredValues.length ? 7 : null),
+      costDays: daysFor(configuredCostDays[index]),
+    }));
+    const safeWeek = Math.max(0, Math.min(this._selectedWeek, Math.max(weeks.length - 1, 0)));
+    this._selectedWeek = safeWeek;
+    const selectedWeek = weeks[safeWeek] || null;
+    const timelineWeeks = [...weeks].reverse();
+    const actualCostTotal = sum(weeks.map((week) => week.cost));
+    const planTotal = sum(weeks.map((week) => week.plan));
+    const recordedUseTotal = sum(weeks.map((week) => week.value));
+    const costCount = count(weeks.map((week) => week.cost));
+    const planCount = count(weeks.map((week) => week.plan));
+    const hasCost = costCount > 0;
+    const hasPlan = planCount > 0;
+    const fact = hasCost ? actualCostTotal : recordedUseTotal;
+    const factMoney = hasCost;
+    const comparisonTone = hasCost && hasPlan ? differenceTone(actualCostTotal, planTotal) : "recorded";
+    const totalDifference = hasCost && hasPlan ? actualCostTotal - planTotal : null;
+    const selectedFact = selectedWeek && finite(selectedWeek.cost) ? selectedWeek.cost : selectedWeek && finite(selectedWeek.value) ? selectedWeek.value : null;
+    const selectedFactMoney = Boolean(selectedWeek && finite(selectedWeek.cost));
+    const selectedDifference = selectedWeek && finite(selectedWeek.cost) && finite(selectedWeek.plan) ? selectedWeek.cost - selectedWeek.plan : null;
+    const selectedTone = selectedDifference !== null && selectedWeek ? differenceTone(selectedWeek.cost, selectedWeek.plan) : "recorded";
+    const barValues = weeks.flatMap((week) => [hasCost ? week.cost : week.value, hasCost ? week.plan : null]).filter(finite);
+    const barMax = Math.max(1, ...barValues.map((item) => Math.abs(item)));
+    const costLabel = this._config.archive_cost_source_labels && this._config.archive_cost_source_labels[system.id]
+      ? String(this._config.archive_cost_source_labels[system.id]) : "Recorded Home Assistant energy cost";
+    const liveSourceCards = [...sources.map((entity) => ({ entityId: entity.entity_id, label: name(entity), value: display(entity), role: "Approved measurement", live: available(entity) })), ...costSources.filter((entity) => !sources.some((source) => source.entity_id === entity.entity_id)).map((entity) => ({ entityId: entity.entity_id, label: name(entity), value: display(entity), role: "Approved cost source", live: available(entity) }))];
+    const archiveSourceDetails = this._config.archive_source_details && Array.isArray(this._config.archive_source_details[system.id])
+      ? this._config.archive_source_details[system.id] : [];
+    const sourceCards = [...liveSourceCards];
+    archiveSourceDetails.forEach((detail) => {
+      const entityId = typeof detail?.entity_id === "string" ? detail.entity_id : "";
+      const label = typeof detail?.label === "string" ? detail.label : entityId;
+      if (!entityId || !label || sourceCards.some((source) => source.entityId === entityId)) return;
+      sourceCards.push({ entityId, label, value: "Archive source", role: typeof detail.role === "string" ? detail.role : "Approved archive source", live: false });
+    });
+    const historyLoading = historySource && this._historyLoading.has(historySource.entity_id);
     const allSensors = this._config.show_catalog === true
       ? Object.values(this._hass && this._hass.states || {}).filter((entity) => /^sensor\./i.test(entity.entity_id)) : [];
-    const groups = allSensors.reduce((result, entity) => {
-      const key = category(entity.entity_id); (result[key] ||= []).push(entity); return result;
-    }, {});
-    this.requestHistory(historySource);
-    const historyLoading = historySource && this._historyLoading.has(historySource.entity_id);
+    const groups = allSensors.reduce((result, entity) => { const key = category(entity.entity_id); (result[key] ||= []).push(entity); return result; }, {});
+    this.requestHistory(historySource, requestedWeeks);
+
+    const oldest = timelineWeeks[0];
+    const newest = timelineWeeks.at(-1);
+    const focusMeta = selectedWeek
+      ? `${selectedWeek.days === null ? "Recorded week" : `${selectedWeek.days} recorded day${selectedWeek.days === 1 ? "" : "s"}`} · W${selectedWeek.isoWeek}`
+      : "No recorded week";
     this.shadowRoot.innerHTML = `
       <style>
         :host { display:block; color:#173448; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
-        * { box-sizing:border-box; } .card { overflow:hidden; border-radius:22px; background:#f8f4ec; box-shadow:0 8px 24px rgba(35,29,18,.13); }
-        header { display:flex; justify-content:space-between; gap:12px; padding:19px 20px 15px; border-bottom:1px solid #ded4c4; } .brand{font-weight:800;font-size:21px;letter-spacing:-.04em}.sub{margin-top:3px;color:#72808a;font-size:12px}.state{align-self:start;padding:7px 9px;border-radius:99px;background:#e6efe5;color:#35573a;font-size:10px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.dot{display:inline-block;width:7px;height:7px;margin-right:5px;border-radius:50%;background:#58905e}
-        .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:12px 12px 0}.tab{border:1px solid #dbd0c1;border-radius:10px;background:#fffdf8;color:#52636d;padding:9px 4px;font:700 12px inherit;cursor:pointer}.tab[aria-selected="true"]{border-color:#173448;background:#173448;color:#fffdf8}
-        .main{margin:12px;background:#102737;color:#f8f3e9;border-radius:17px;overflow:hidden}.hero{display:grid;grid-template-columns:1fr auto;gap:10px;padding:18px}.eyebrow{margin:0;color:#dbb56e;font-size:10px;font-weight:800;letter-spacing:.15em;text-transform:uppercase}.hero h2{margin:6px 0 0;font-size:29px;letter-spacing:-.05em}.metric{align-self:end;text-align:right}.metric strong{display:block;margin-top:6px;font-size:22px;letter-spacing:-.05em}.metric span{color:#9eafb7;font-size:10px}.timeline{padding:0 18px 18px}.week{display:grid;grid-template-columns:122px 1fr 76px;gap:8px;align-items:center;padding:7px 0;color:#c4d0d3;font-size:11px}.week-date{line-height:1.25}.track{height:10px;border-radius:99px;background:#233d4e;overflow:hidden}.bar{height:100%;border-radius:inherit;background:linear-gradient(90deg,#829b9c,#cad4bd)}.week strong{text-align:right;color:#fffdf8;font-size:11px}.cost{display:block;margin-top:2px;color:#dcb76f;font-size:9px}.empty{padding:16px;color:#a9b7bd;font-size:12px;line-height:1.45}
-        .sources{padding:5px 20px 20px}.heading{display:flex;justify-content:space-between;align-items:baseline;gap:10px}.heading h3{margin:12px 0 8px;font-size:16px;letter-spacing:-.03em}.heading span{color:#7a898f;font-size:11px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.source{padding:10px;border:1px solid #ddd2c1;border-radius:12px;background:#fffdf8;min-width:0}.source b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.source span{display:block;margin-top:4px;color:#8c744b;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.source small{display:block;margin-top:5px;color:#71808a;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-        details{margin:0 20px 20px;border:1px solid #ddd2c1;border-radius:12px;background:#fffdf8;overflow:hidden}summary{cursor:pointer;padding:12px;font-size:13px;font-weight:800}.catalog{padding:0 12px 12px}.catalog h4{margin:14px 0 7px;color:#8c7040;font-size:10px;letter-spacing:.12em;text-transform:uppercase}.catalog .grid{grid-template-columns:repeat(3,minmax(0,1fr))}.note{padding:0 20px 18px;color:#74838a;font-size:10px;line-height:1.45}@media(max-width:420px){.tab{font-size:10px}.grid,.catalog .grid{grid-template-columns:1fr}.week{grid-template-columns:92px 1fr 70px;font-size:10px}}
+        * { box-sizing:border-box; } button { font:inherit; } .card { overflow:hidden; border-radius:22px; background:#102030; color:#f8f3e9; box-shadow:0 8px 24px rgba(19,30,39,.2); }
+        header { display:flex; justify-content:space-between; gap:12px; padding:16px 18px 13px; border-bottom:1px solid rgba(255,255,255,.1); }.brand{font-weight:800;font-size:18px;letter-spacing:-.04em}.sub{margin-top:3px;color:#9babb3;font-size:10px}.state{align-self:start;padding:6px 8px;border-radius:99px;background:rgba(123,170,125,.17);color:#c3d9c4;font-size:9px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.dot{display:inline-block;width:6px;height:6px;margin-right:5px;border-radius:50%;background:#8dc493}
+        .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:11px 12px 0}.tab{min-width:0;border:1px solid rgba(222,197,150,.25);border-radius:9px;background:rgba(255,255,255,.04);color:#d6e0df;padding:8px 3px;font-size:11px;font-weight:700;cursor:pointer}.tab[aria-selected="true"]{border-color:#f7f3e9;background:#f7f3e9;color:#102030}
+        .overview{padding:16px 18px 14px;border-bottom:1px solid rgba(222,197,150,.7)}.eyebrow{margin:0;color:#d9b779;font-size:10px;font-weight:800;letter-spacing:.15em;text-transform:uppercase}.summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:12px}.summary{min-height:72px;padding:11px;border:1px solid rgba(222,197,150,.25);border-radius:12px;background:rgba(255,255,255,.09)}.summary span,.context-label{display:block;color:rgba(248,243,233,.52);font-size:9px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.summary strong{display:block;margin-top:5px;font-size:21px;line-height:1.05;letter-spacing:-.05em;overflow-wrap:anywhere}.comparison{min-height:16px;margin:10px 1px 0;color:#cad6d5;font-size:11px}.comparison b{color:#d9b779}.comparison.over b{color:#e4b6a1}.comparison.under b{color:#b8d2bc}
+        .focus{padding:16px 18px 12px}.focus-head{display:flex;justify-content:space-between;gap:12px}.focus-left{min-width:0}.focus-title{margin:0;color:rgba(248,243,233,.52);font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}.focus-value{margin:6px 0 0;font-size:31px;font-weight:800;letter-spacing:-.06em;line-height:1}.focus-use{margin:6px 0 0;color:#ccd7d8;font-size:11px}.focus-date{margin:8px 0 0;color:#e7e2d8;font-size:13px;line-height:1.25}.focus-code{margin:3px 0 0;color:rgba(248,243,233,.46);font-size:9px;letter-spacing:.03em}.status{text-align:right;white-space:nowrap}.status b{display:block;color:#d9b779;font-size:12px}.status.over b{color:#e4b6a1}.status.under b{color:#b8d2bc}.status span{display:block;margin-top:6px;color:rgba(248,243,233,.5);font-size:10px}.focus-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px}.mini{min-width:0;padding:9px;border-radius:10px;background:rgba(255,255,255,.06)}.mini span{display:block;color:rgba(248,243,233,.45);font-size:8px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.mini strong{display:block;margin-top:4px;font-size:13px;letter-spacing:-.03em;overflow-wrap:anywhere}.mini small{display:block;margin-top:3px;color:rgba(248,243,233,.45);font-size:8px;line-height:1.25}
+        .timeline-wrap{padding:0 12px 0}.timeline-label{margin:2px 6px 7px;color:rgba(248,243,233,.38);font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.timeline-frame{position:relative}.focus-line{pointer-events:none;position:absolute;z-index:2;left:0;right:0;top:50%;height:1px;background:#d9b779}.timeline{height:268px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y mandatory;padding:112px 2px;scroll-behavior:smooth}.week{display:grid;grid-template-columns:86px minmax(46px,1fr) 72px;align-items:center;gap:8px;width:100%;height:38px;padding:0 5px;border:0;background:rgba(255,255,255,.02);color:#e7ece9;text-align:left;cursor:pointer;scroll-snap-align:center}.week:hover,.week[aria-current="true"]{background:rgba(255,255,255,.09)}.week[aria-current="true"] .week-date{color:#e4c27b;font-weight:800}.week-date{font-size:10px;line-height:1.15}.week-date small{display:block;margin-top:2px;color:rgba(248,243,233,.38);font-size:8px}.track{position:relative;height:13px}.track::before{content:"";position:absolute;inset:2px 0;border-radius:5px;background:#203847}.bar{position:absolute;left:0;bottom:3px;height:7px;border-radius:5px;background:#f7f3e9}.bar.under{background:#c5d6c4}.bar.over{background:#e4b6a1}.bar.recorded{background:#9db3b4}.plan-tick{position:absolute;z-index:1;top:0;bottom:0;width:1px;border-left:1px dashed rgba(248,243,233,.64)}.week-value{text-align:right;font-size:10px;line-height:1.1}.week-value strong{display:block;font-size:10px}.week-value small{display:block;margin-top:2px;color:#d9b779;font-size:8px}.week-value .no-record{color:rgba(248,243,233,.42)}.controls{display:flex;gap:6px;padding:10px 14px;border-top:1px solid rgba(255,255,255,.1)}.controls button{border:0;border-radius:99px;background:rgba(255,255,255,.1);color:#e9edeb;padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer}
+        .sources{background:#f8f4ec;color:#173448;padding:15px 18px 18px}.sources-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}.sources h3{margin:0;font-size:15px;letter-spacing:-.03em}.sources-head span{color:#78868d;font-size:10px}.source-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}.source{min-width:0;padding:10px;border:1px solid #ded4c4;border-radius:10px;background:#fffdf8}.source .role{display:block;color:#8c7040;font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.source b{display:block;overflow:hidden;margin-top:4px;text-overflow:ellipsis;white-space:nowrap;font-size:11px}.source .source-value{display:block;margin-top:5px;color:#8c7040;font-size:11px}.source small{display:block;overflow:hidden;margin-top:4px;color:#71808a;font-size:8px;text-overflow:ellipsis;white-space:nowrap}.source-note{margin:10px 0 0;color:#667780;font-size:10px;line-height:1.4}.empty{padding:14px;color:#a8b7bc;font-size:11px;line-height:1.45}.sources .empty{border:1px dashed #d6c9b8;border-radius:10px;color:#61717a}
+        details{margin:0 18px 18px;border:1px solid #ddd2c1;border-radius:12px;background:#fffdf8;overflow:hidden}summary{cursor:pointer;padding:12px;color:#173448;font-size:12px;font-weight:800}.catalog{padding:0 12px 12px}.catalog h4{margin:14px 0 7px;color:#8c7040;font-size:9px;letter-spacing:.12em;text-transform:uppercase}.catalog .source-grid{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:0}.footnote{background:#f8f4ec;color:#74838a;padding:0 18px 17px;font-size:9px;line-height:1.45}@media(max-width:420px){.tab{font-size:9px}.week{grid-template-columns:80px minmax(40px,1fr) 67px}.focus-value{font-size:28px}.source-grid,.catalog .source-grid{grid-template-columns:1fr}.timeline{height:250px}.timeline-wrap{padding:0 9px}.overview,.focus{padding-left:14px;padding-right:14px}}
       </style>
       <article class="card">
-        <header><div><div class="brand">Oriel</div><div class="sub">Aldworth · Home Assistant card</div></div><div class="state"><i class="dot"></i>read only</div></header>
-        <nav class="tabs" aria-label="Oriel systems">${systems.map((item) => `<button class="tab" data-system="${item.id}" aria-selected="${item.id === system.id}">${item.icon} ${item.label}</button>`).join("")}</nav>
-        <section class="main"><div class="hero"><div><p class="eyebrow">Current system</p><h2>${esc(system.label)}</h2></div><div class="metric"><span>${cost ? "Published cost" : "Live source"}</span><strong>${esc(cost ? display(cost) : display(primary))}</strong></div></div>${weeklyValues.length ? `<div class="timeline"><p class="eyebrow">${weekly.length ? "Imported weekly record" : "Recorded weekly statistics"} · Mon–Sun</p>${weeklyValues.map((raw, index) => { const number = Number(raw); const ratio = Number.isFinite(number) ? Math.max(3, Math.round(number / max * 100)) : 0; const label = weekLabel(index, weekAnchor, weekTimeZone); return `<div class="week"><span class="week-date" title="Week commencing Monday">${esc(label)}</span><span class="track"><i class="bar" style="width:${ratio}%"></i></span><strong>${Number.isFinite(number) ? esc(format(number, historySource ? (attrs(historySource).unit_of_measurement || system.unit) : system.unit)) : "No record"}${Number.isFinite(Number(weeklyCosts[index])) ? `<small class="cost">${esc(format(Number(weeklyCosts[index]), "GBP", true))}</small>` : ""}</strong></div>`; }).join("")}</div>` : `<div class="empty">${historyLoading ? "Loading Recorder statistics for the approved source…" : this.statisticsEnabled() ? "No recorded statistics are available for the approved source yet." : "Weekly statistics are disabled. Add statistics: true to this card configuration."}</div>`}</section>
-        <section class="sources"><div class="heading"><h3>Current sources</h3><span>${sources.filter(available).length}/${sources.length} available</span></div><div class="grid">${sources.length ? sources.map((entity) => `<div class="source"><b title="${esc(name(entity))}">${esc(name(entity))}</b><span>${esc(display(entity))}</span><small>${esc(entity.entity_id)}</small></div>`).join("") : `<div class="empty">No approved source in this system.</div>`}</div></section>
-        ${allSensors.length ? `<details ${this._expanded ? "open" : ""}><summary>Full administrator sensor catalogue · ${allSensors.filter(available).length}/${allSensors.length} available</summary><div class="catalog">${Object.entries(groups).sort(([a],[b]) => a.localeCompare(b)).map(([label, entries]) => `<h4>${esc(label)} · ${entries.length}</h4><div class="grid">${entries.sort((a,b) => name(a).localeCompare(name(b))).map((entity) => `<div class="source"><b title="${esc(name(entity))}">${esc(name(entity))}</b><span>${esc(display(entity))}</span><small>${esc(entity.entity_id)}</small></div>`).join("")}</div>`).join("")}</div></details>` : ""}
-        <div class="note">Oriel reads approved Home Assistant states already present in this signed-in dashboard. ${this.statisticsEnabled() ? "Weekly statistics use a read-only Recorder query for the selected approved source only." : "No Recorder history is requested."} It has no control buttons, external requests, tokens or service calls.</div>
+        <header><div><div class="brand">Oriel</div><div class="sub">Aldworth · recorded Home Assistant history</div></div><div class="state"><i class="dot"></i>read only</div></header>
+        <nav class="tabs" aria-label="Oriel systems">${systems.map((item) => `<button class="tab" data-system="${esc(item.id)}" aria-selected="${item.id === system.id}">${esc(item.icon)} ${esc(item.label)}</button>`).join("")}</nav>
+        ${weeks.length ? `
+          <section class="overview">
+            <p class="eyebrow">${weeks.length} week${weeks.length === 1 ? "" : "s"} to focus · ${esc(oldest.range)} → ${esc(newest.range)}</p>
+            <div class="summary-grid">
+              <div class="summary"><span>Plan · ${weeks.length}W</span><strong>${hasPlan ? esc(format(planTotal, "", true)) : "—"}</strong></div>
+              <div class="summary"><span>${hasCost ? `Tariff estimate · ${costCount}W` : `Recorded use · ${count(weeks.map((week) => week.value))}W`}</span><strong>${esc(format(fact, sourceUnit, factMoney))}</strong></div>
+            </div>
+            <p class="comparison ${comparisonTone}">${hasPlan && hasCost ? `<b>${differenceLabel(comparisonTone)}</b> ${totalDifference >= 0 ? "+" : ""}${esc(format(totalDifference, "", true))} vs plan` : hasCost ? `<b>Recorded cost</b> · ${esc(costLabel)} · no approved plan` : "No approved recorded cost or plan for this system."}</p>
+          </section>
+          <section class="focus">
+            <div class="focus-head">
+              <div class="focus-left"><p class="focus-title">Focus week · ${esc(focusMeta)}</p><p class="focus-value">${selectedFact === null ? "No record" : esc(format(selectedFact, sourceUnit, selectedFactMoney))}</p>${selectedWeek && selectedFactMoney && finite(selectedWeek.value) ? `<p class="focus-use">Recorded use · ${esc(format(selectedWeek.value, sourceUnit))}</p>` : ""}${selectedWeek ? `<p class="focus-date">${esc(selectedWeek.calendar)}</p><p class="focus-code">UK Mon–Sun · ${esc(selectedWeek.startIso)} → ${esc(selectedWeek.endIso)}</p>` : ""}</div>
+              <div class="status ${selectedTone}"><b>${differenceLabel(selectedTone)}</b><span>${selectedDifference === null ? "No approved plan" : `${selectedDifference >= 0 ? "+" : ""}${format(selectedDifference, "", true)}`}</span></div>
+            </div>
+            <div class="focus-metrics">
+              <div class="mini"><span>Week plan</span><strong>${selectedWeek && finite(selectedWeek.plan) ? esc(format(selectedWeek.plan, "", true)) : "—"}</strong><small>${selectedWeek && finite(selectedWeek.plan) ? "Approved plan" : "Not configured"}</small></div>
+              <div class="mini"><span>${selectedFactMoney ? "Tariff estimate" : "Recorded use"}</span><strong>${selectedFact === null ? "—" : esc(format(selectedFact, sourceUnit, selectedFactMoney))}</strong><small>${selectedFactMoney && selectedWeek && selectedWeek.costDays !== null ? `${selectedWeek.costDays} matching day${selectedWeek.costDays === 1 ? "" : "s"}` : selectedWeek && selectedWeek.days !== null ? `${selectedWeek.days} recorded day${selectedWeek.days === 1 ? "" : "s"}` : "Recorded source"}</small></div>
+              <div class="mini"><span>${selectedFactMoney ? "Recorded use" : "Cost"}</span><strong>${selectedFactMoney && selectedWeek && finite(selectedWeek.value) ? esc(format(selectedWeek.value, sourceUnit)) : selectedWeek && finite(selectedWeek.cost) ? esc(format(selectedWeek.cost, "", true)) : "—"}</strong><small>${selectedFactMoney ? "Approved meter" : hasCost ? costLabel : "No cost record"}</small></div>
+            </div>
+          </section>
+          <section class="timeline-wrap"><p class="timeline-label">Recorded weeks · select a period · yellow line is focus</p><div class="timeline-frame"><i class="focus-line" aria-hidden="true"></i><div class="timeline" role="listbox" aria-label="${esc(system.label)} weekly record">${timelineWeeks.map((week) => { const primary = hasCost ? week.cost : week.value; const plan = hasCost ? week.plan : null; const ratio = finite(primary) ? Math.max(3, Math.round(Math.abs(primary) / barMax * 100)) : 0; const planRatio = finite(plan) ? Math.max(0, Math.min(100, Math.round(Math.abs(plan) / barMax * 100))) : null; const tone = finite(primary) && finite(plan) ? differenceTone(primary, plan) : "recorded"; const focused = week.index === safeWeek; const supporting = hasCost && finite(week.value) ? `${format(week.value, sourceUnit)}${week.costDays !== null ? ` · ${week.costDays}d matched` : ""}` : ""; return `<button class="week" type="button" role="option" data-week="${week.index}" ${focused ? "data-focus-week aria-current=\"true\" aria-selected=\"true\"" : "aria-selected=\"false\""} aria-label="${esc(`${week.calendar}: ${primary === null ? "no record" : format(primary, sourceUnit, hasCost)}`)}"><span class="week-date">${esc(week.range)}<small>Mon–Sun · W${week.isoWeek}${week.days !== null ? ` · ${week.days}d` : ""}</small></span><span class="track"><i class="bar ${tone}" style="width:${ratio}%"></i>${planRatio === null ? "" : `<i class="plan-tick" style="left:${planRatio}%"></i>`}</span><span class="week-value">${finite(primary) ? `<strong>${esc(format(primary, sourceUnit, hasCost))}</strong>${supporting ? `<small>${esc(supporting)}</small>` : ""}` : `<strong class="no-record">No record</strong>`}</span></button>`; }).join("")}</div></div></section>
+          <div class="controls"><button type="button" data-jump="oldest" data-oldest="${weeks.length - 1}">Oldest</button><button type="button" data-jump="latest">Latest</button></div>
+        ` : `<section class="empty">${historyLoading ? "Loading Recorder statistics for the approved source…" : this.statisticsEnabled() ? "No recorded statistics are available for the approved source yet." : "Weekly statistics are disabled. Add statistics: true to this card configuration."}</section>`}
+        <section class="sources"><div class="sources-head"><h3>Sources used</h3><span>${sourceCards.filter((source) => source.live).length} live · ${sourceCards.length} approved</span></div>${sourceCards.length ? `<div class="source-grid">${sourceCards.map((source) => `<div class="source"><span class="role">${esc(source.role)}</span><b title="${esc(source.label)}">${esc(source.label)}</b><span class="source-value">${esc(source.value)}</span><small>${esc(source.entityId)}</small></div>`).join("")}</div>` : `<div class="empty">No approved source in this system.</div>`}<p class="source-note">${hasCost ? `${esc(costLabel)} is shown only for the matching archived weeks; it is not an invoice or cash-spend ledger.` : "Add approved cost sources and matching archived weekly costs only when their source and coverage have been validated."}</p></section>
+        ${allSensors.length ? `<details ${this._expanded ? "open" : ""}><summary>Full administrator sensor catalogue · ${allSensors.filter(available).length}/${allSensors.length} available</summary><div class="catalog">${Object.entries(groups).sort(([a,], [b,]) => a.localeCompare(b)).map(([label, entries]) => `<h4>${esc(label)} · ${entries.length}</h4><div class="source-grid">${entries.sort((a, b) => name(a).localeCompare(name(b))).map((entity) => `<div class="source"><b title="${esc(name(entity))}">${esc(name(entity))}</b><span class="source-value">${esc(display(entity))}</span><small>${esc(entity.entity_id)}</small></div>`).join("")}</div>`).join("")}</div></details>` : ""}
+        <div class="footnote">Oriel reads approved Home Assistant states already present in this signed-in dashboard. ${this.statisticsEnabled() ? "Weekly consumption statistics use a read-only Recorder query for the selected approved source only." : "No Recorder history is requested."} It has no control buttons, external requests, tokens or service calls.</div>
       </article>`;
-    this.shadowRoot.querySelectorAll("[data-system]").forEach((button) => button.addEventListener("click", () => { this._selected = button.dataset.system; this.render(); }));
-    const details = this.shadowRoot.querySelector("details");
-    if (details) details.addEventListener("toggle", () => { this._expanded = details.open; });
+    this.afterRender();
   }
 }
 
