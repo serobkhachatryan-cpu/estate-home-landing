@@ -50,7 +50,7 @@ cp /путь/к/oriel-card.js /config/www/oriel/oriel-card.js
 4. Введите URL:
 
    ```text
-   /local/oriel/oriel-card.js?v=4
+   /local/oriel/oriel-card.js?v=5
    ```
 
 5. Выберите **JavaScript module**.
@@ -131,10 +131,14 @@ archive_timezone: Europe/London
 
 Деньги показываются только при одновременном наличии:
 
-1. согласованного `archive_weekly_costs`;
+1. согласованного с **каждой** отображаемой usage-неделей `archive_weekly_costs`;
 2. явно перечисленных `cost_entity_ids`;
 3. количества совпавших дней в `archive_weekly_cost_matching_days`;
 4. корректной подписи источника в `archive_cost_source_labels`.
+
+Если хотя бы один из этих элементов отсутствует или длины массивов не
+совпадают, карточка оставляет ряд в kWh/L и пишет `tariff estimate withheld`;
+она не превращает неподтверждённое число в GBP.
 
 Если monetary sensor построен Home Assistant из тарифа, подпись должна быть
 `Tariff estimate` или `Home Assistant published tariff cost`, а не invoice,
@@ -168,7 +172,9 @@ entity_ids:
 ```
 
 Карточка при этом отображает только согласованные источники и не подставляет
-вместо отсутствующего состояния ноль или оценку.
+вместо отсутствующего состояния ноль или оценку. Если `entity_ids` не
+перечислены явно, weekly-card не ищет «похожие» сенсоры автоматически и
+показывает отсутствие approved source.
 
 ## Проверка после установки
 
@@ -181,7 +187,7 @@ entity_ids:
 ## Обновление и откат
 
 **Обновление:** замените `/config/www/oriel/oriel-card.js`, увеличьте
-параметр версии в resource URL (`?v=2`) и обновите браузер.
+параметр версии в resource URL (например, с `?v=5` на `?v=6`) и обновите браузер.
 
 **Откат:** верните предыдущий JS-файл из Home Assistant backup или из
 проверенной версии, поменяйте URL на предыдущую версию и обновите браузер.
