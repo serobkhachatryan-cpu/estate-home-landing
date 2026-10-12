@@ -7,7 +7,7 @@ This is a read-only custom card for a standard Home Assistant dashboard. It is
 not a `panel_custom` page.
 
 1. Copy `oriel-card.js` to `/config/www/oriel/oriel-card.js`.
-2. Add `/local/oriel/oriel-card.js?v=5` as a JavaScript module resource in
+2. Add `/local/oriel/oriel-card.js?v=6` as a JavaScript module resource in
    **Settings → Dashboards → Resources**.
 3. Add a Manual card to any dashboard:
 
