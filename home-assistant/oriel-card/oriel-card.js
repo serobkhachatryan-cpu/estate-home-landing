@@ -91,6 +91,22 @@ const weekRange = (index, anchor = new Date(), timeZone = null) => {
   const start = new Date(end); start.setDate(start.getDate() - 7);
   return { start, end };
 };
+const calendarParts = (date, timeZone) => Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+  timeZone: timeZone || 'Europe/London', year: 'numeric', month: 'short', day: 'numeric',
+}).formatToParts(date).filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
+const weekLabel = (index, anchor, timeZone) => {
+  // Work in local calendar dates rather than 24-hour intervals: that keeps
+  // Monday–Sunday labels correct at UK daylight-saving changes.
+  const local = zonedParts(anchor, timeZone || 'Europe/London');
+  const monday = new Date(Date.UTC(local.year, local.month - 1, local.day));
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7) - index * 7);
+  const sunday = new Date(monday); sunday.setUTCDate(sunday.getUTCDate() + 6);
+  const start = calendarParts(monday, 'UTC');
+  const end = calendarParts(sunday, 'UTC');
+  if (start.year === end.year && start.month === end.month) return `${start.day}–${end.day} ${end.month} ${end.year}`;
+  if (start.year === end.year) return `${start.day} ${start.month}–${end.day} ${end.month} ${end.year}`;
+  return `${start.day} ${start.month} ${start.year}–${end.day} ${end.month} ${end.year}`;
+};
 const historyPoints = (response, entityId) => Array.isArray(response) ? (Array.isArray(response[0]) ? response[0] : response) : Array.isArray(response && response[entityId]) ? response[entityId] : [];
 const historyWeek = (range, history, entity) => {
   const points = history.map((item) => ({ at: timestamp(item), value: Number.parseFloat(item && item.state) }))
@@ -174,6 +190,17 @@ class OrielCard extends HTMLElement {
     return configured || null;
   }
 
+  archiveAnchor() {
+    const parsed = this._config.archive_anchor ? new Date(this._config.archive_anchor) : null;
+    return parsed && Number.isFinite(parsed.getTime()) ? parsed : this.statisticsAnchor();
+  }
+
+  archiveTimeZone() {
+    const configured = this._config.archive_timezone;
+    try { if (configured) new Intl.DateTimeFormat('en-GB', { timeZone: configured }); } catch { return this.statisticsTimeZone() || 'Europe/London'; }
+    return configured || this.statisticsTimeZone() || 'Europe/London';
+  }
+
   requestHistory(entity) {
     if (!this.statisticsEnabled() || !entity || !this._hass || this._history.has(entity.entity_id) || this._historyLoading.has(entity.entity_id) || typeof this._hass.callWS !== "function") return;
     const anchor = this.statisticsAnchor();
@@ -201,6 +228,8 @@ class OrielCard extends HTMLElement {
     const dynamicWeekly = historySource && this.statisticsEnabled()
       ? Array.from({ length: HISTORY_WEEKS }, (_, index) => historyWeek(weekRange(index, this.statisticsAnchor(), this.statisticsTimeZone()), liveHistory, historySource)) : [];
     const weeklyValues = weekly.length ? weekly : dynamicWeekly;
+    const weekAnchor = weekly.length ? this.archiveAnchor() : this.statisticsAnchor();
+    const weekTimeZone = weekly.length ? this.archiveTimeZone() : this.statisticsTimeZone() || 'Europe/London';
     const max = Math.max(1, ...weeklyValues.filter(Number.isFinite));
     const allSensors = this._config.show_catalog === true
       ? Object.values(this._hass && this._hass.states || {}).filter((entity) => /^sensor\./i.test(entity.entity_id)) : [];
@@ -215,14 +244,14 @@ class OrielCard extends HTMLElement {
         * { box-sizing:border-box; } .card { overflow:hidden; border-radius:22px; background:#f8f4ec; box-shadow:0 8px 24px rgba(35,29,18,.13); }
         header { display:flex; justify-content:space-between; gap:12px; padding:19px 20px 15px; border-bottom:1px solid #ded4c4; } .brand{font-weight:800;font-size:21px;letter-spacing:-.04em}.sub{margin-top:3px;color:#72808a;font-size:12px}.state{align-self:start;padding:7px 9px;border-radius:99px;background:#e6efe5;color:#35573a;font-size:10px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.dot{display:inline-block;width:7px;height:7px;margin-right:5px;border-radius:50%;background:#58905e}
         .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:12px 12px 0}.tab{border:1px solid #dbd0c1;border-radius:10px;background:#fffdf8;color:#52636d;padding:9px 4px;font:700 12px inherit;cursor:pointer}.tab[aria-selected="true"]{border-color:#173448;background:#173448;color:#fffdf8}
-        .main{margin:12px;background:#102737;color:#f8f3e9;border-radius:17px;overflow:hidden}.hero{display:grid;grid-template-columns:1fr auto;gap:10px;padding:18px}.eyebrow{margin:0;color:#dbb56e;font-size:10px;font-weight:800;letter-spacing:.15em;text-transform:uppercase}.hero h2{margin:6px 0 0;font-size:29px;letter-spacing:-.05em}.metric{align-self:end;text-align:right}.metric strong{display:block;margin-top:6px;font-size:22px;letter-spacing:-.05em}.metric span{color:#9eafb7;font-size:10px}.timeline{padding:0 18px 18px}.week{display:grid;grid-template-columns:72px 1fr 76px;gap:8px;align-items:center;padding:7px 0;color:#c4d0d3;font-size:11px}.track{height:10px;border-radius:99px;background:#233d4e;overflow:hidden}.bar{height:100%;border-radius:inherit;background:linear-gradient(90deg,#829b9c,#cad4bd)}.week strong{text-align:right;color:#fffdf8;font-size:11px}.cost{display:block;margin-top:2px;color:#dcb76f;font-size:9px}.empty{padding:16px;color:#a9b7bd;font-size:12px;line-height:1.45}
+        .main{margin:12px;background:#102737;color:#f8f3e9;border-radius:17px;overflow:hidden}.hero{display:grid;grid-template-columns:1fr auto;gap:10px;padding:18px}.eyebrow{margin:0;color:#dbb56e;font-size:10px;font-weight:800;letter-spacing:.15em;text-transform:uppercase}.hero h2{margin:6px 0 0;font-size:29px;letter-spacing:-.05em}.metric{align-self:end;text-align:right}.metric strong{display:block;margin-top:6px;font-size:22px;letter-spacing:-.05em}.metric span{color:#9eafb7;font-size:10px}.timeline{padding:0 18px 18px}.week{display:grid;grid-template-columns:122px 1fr 76px;gap:8px;align-items:center;padding:7px 0;color:#c4d0d3;font-size:11px}.week-date{line-height:1.25}.track{height:10px;border-radius:99px;background:#233d4e;overflow:hidden}.bar{height:100%;border-radius:inherit;background:linear-gradient(90deg,#829b9c,#cad4bd)}.week strong{text-align:right;color:#fffdf8;font-size:11px}.cost{display:block;margin-top:2px;color:#dcb76f;font-size:9px}.empty{padding:16px;color:#a9b7bd;font-size:12px;line-height:1.45}
         .sources{padding:5px 20px 20px}.heading{display:flex;justify-content:space-between;align-items:baseline;gap:10px}.heading h3{margin:12px 0 8px;font-size:16px;letter-spacing:-.03em}.heading span{color:#7a898f;font-size:11px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.source{padding:10px;border:1px solid #ddd2c1;border-radius:12px;background:#fffdf8;min-width:0}.source b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.source span{display:block;margin-top:4px;color:#8c744b;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.source small{display:block;margin-top:5px;color:#71808a;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-        details{margin:0 20px 20px;border:1px solid #ddd2c1;border-radius:12px;background:#fffdf8;overflow:hidden}summary{cursor:pointer;padding:12px;font-size:13px;font-weight:800}.catalog{padding:0 12px 12px}.catalog h4{margin:14px 0 7px;color:#8c7040;font-size:10px;letter-spacing:.12em;text-transform:uppercase}.catalog .grid{grid-template-columns:repeat(3,minmax(0,1fr))}.note{padding:0 20px 18px;color:#74838a;font-size:10px;line-height:1.45}@media(max-width:420px){.tab{font-size:10px}.grid,.catalog .grid{grid-template-columns:1fr}.week{grid-template-columns:65px 1fr 70px}}
+        details{margin:0 20px 20px;border:1px solid #ddd2c1;border-radius:12px;background:#fffdf8;overflow:hidden}summary{cursor:pointer;padding:12px;font-size:13px;font-weight:800}.catalog{padding:0 12px 12px}.catalog h4{margin:14px 0 7px;color:#8c7040;font-size:10px;letter-spacing:.12em;text-transform:uppercase}.catalog .grid{grid-template-columns:repeat(3,minmax(0,1fr))}.note{padding:0 20px 18px;color:#74838a;font-size:10px;line-height:1.45}@media(max-width:420px){.tab{font-size:10px}.grid,.catalog .grid{grid-template-columns:1fr}.week{grid-template-columns:92px 1fr 70px;font-size:10px}}
       </style>
       <article class="card">
         <header><div><div class="brand">Oriel</div><div class="sub">Aldworth · Home Assistant card</div></div><div class="state"><i class="dot"></i>read only</div></header>
         <nav class="tabs" aria-label="Oriel systems">${systems.map((item) => `<button class="tab" data-system="${item.id}" aria-selected="${item.id === system.id}">${item.icon} ${item.label}</button>`).join("")}</nav>
-        <section class="main"><div class="hero"><div><p class="eyebrow">Current system</p><h2>${esc(system.label)}</h2></div><div class="metric"><span>${cost ? "Published cost" : "Live source"}</span><strong>${esc(cost ? display(cost) : display(primary))}</strong></div></div>${weeklyValues.length ? `<div class="timeline"><p class="eyebrow">${weekly.length ? "Imported weekly record" : "Recorded weekly statistics"}</p>${weeklyValues.map((raw, index) => { const number = Number(raw); const ratio = Number.isFinite(number) ? Math.max(3, Math.round(number / max * 100)) : 0; return `<div class="week"><span>${index === 0 ? "This week" : `${index} wk ago`}</span><span class="track"><i class="bar" style="width:${ratio}%"></i></span><strong>${Number.isFinite(number) ? esc(format(number, historySource ? (attrs(historySource).unit_of_measurement || system.unit) : system.unit)) : "No record"}${Number.isFinite(Number(weeklyCosts[index])) ? `<small class="cost">${esc(format(Number(weeklyCosts[index]), "GBP", true))}</small>` : ""}</strong></div>`; }).join("")}</div>` : `<div class="empty">${historyLoading ? "Loading Recorder statistics for the approved source…" : this.statisticsEnabled() ? "No recorded statistics are available for the approved source yet." : "Weekly statistics are disabled. Add statistics: true to this card configuration."}</div>`}</section>
+        <section class="main"><div class="hero"><div><p class="eyebrow">Current system</p><h2>${esc(system.label)}</h2></div><div class="metric"><span>${cost ? "Published cost" : "Live source"}</span><strong>${esc(cost ? display(cost) : display(primary))}</strong></div></div>${weeklyValues.length ? `<div class="timeline"><p class="eyebrow">${weekly.length ? "Imported weekly record" : "Recorded weekly statistics"} · Mon–Sun</p>${weeklyValues.map((raw, index) => { const number = Number(raw); const ratio = Number.isFinite(number) ? Math.max(3, Math.round(number / max * 100)) : 0; const label = weekLabel(index, weekAnchor, weekTimeZone); return `<div class="week"><span class="week-date" title="Week commencing Monday">${esc(label)}</span><span class="track"><i class="bar" style="width:${ratio}%"></i></span><strong>${Number.isFinite(number) ? esc(format(number, historySource ? (attrs(historySource).unit_of_measurement || system.unit) : system.unit)) : "No record"}${Number.isFinite(Number(weeklyCosts[index])) ? `<small class="cost">${esc(format(Number(weeklyCosts[index]), "GBP", true))}</small>` : ""}</strong></div>`; }).join("")}</div>` : `<div class="empty">${historyLoading ? "Loading Recorder statistics for the approved source…" : this.statisticsEnabled() ? "No recorded statistics are available for the approved source yet." : "Weekly statistics are disabled. Add statistics: true to this card configuration."}</div>`}</section>
         <section class="sources"><div class="heading"><h3>Current sources</h3><span>${sources.filter(available).length}/${sources.length} available</span></div><div class="grid">${sources.length ? sources.map((entity) => `<div class="source"><b title="${esc(name(entity))}">${esc(name(entity))}</b><span>${esc(display(entity))}</span><small>${esc(entity.entity_id)}</small></div>`).join("") : `<div class="empty">No approved source in this system.</div>`}</div></section>
         ${allSensors.length ? `<details ${this._expanded ? "open" : ""}><summary>Full administrator sensor catalogue · ${allSensors.filter(available).length}/${allSensors.length} available</summary><div class="catalog">${Object.entries(groups).sort(([a],[b]) => a.localeCompare(b)).map(([label, entries]) => `<h4>${esc(label)} · ${entries.length}</h4><div class="grid">${entries.sort((a,b) => name(a).localeCompare(name(b))).map((entity) => `<div class="source"><b title="${esc(name(entity))}">${esc(name(entity))}</b><span>${esc(display(entity))}</span><small>${esc(entity.entity_id)}</small></div>`).join("")}</div>`).join("")}</div></details>` : ""}
         <div class="note">Oriel reads approved Home Assistant states already present in this signed-in dashboard. ${this.statisticsEnabled() ? "Weekly statistics use a read-only Recorder query for the selected approved source only." : "No Recorder history is requested."} It has no control buttons, external requests, tokens or service calls.</div>
