@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Oriel card · Aldworth historical playback</title>
+    <script type="module" src="./oriel-card.js"></script>
+    <script src="/oriel-private/aldworth-history.js"></script>
+    <style>body { margin: 0; background: #e7e1d7; } .notice { position: fixed; right: 16px; bottom: 16px; z-index: 2; max-width: 380px; padding: 12px; border: 1px solid #c7b79e; border-radius: 14px; background: #fffaf0; color: #243f51; font: 13px/1.4 system-ui,sans-serif; box-shadow: 0 10px 28px rgba(28,42,46,.18); }</style>
+  </head>
+  <body>
+    <oriel-card id="card"></oriel-card>
+    <aside class="notice"><strong>Private local playback.</strong><br />It uses only the approved historical electricity and water series extracted locally from the Aldworth Recorder archive. It sends no data anywhere.</aside>
+    <script type="module">
+      const fixture = window.__orielAldworthHistoryFixture;
+      if (!fixture) throw new Error('Run npm run build:oriel-historical-fixture before opening this private playback page.');
+      const card = document.querySelector('#card');
+      const entity = (entity_id, source) => ({ entity_id, state: source.state, attributes: { friendly_name: source.label, unit_of_measurement: source.unit, device_class: source.deviceClass }, last_changed: fixture.anchor, last_updated: fixture.anchor });
+      const electricity = 'sensor.shellypro3em_9454c5b9da04_energy';
+      const water = 'sensor.house_water_1_total_l';
+      const states = Object.fromEntries(Object.entries(fixture.sources).map(([id, source]) => [id, entity(id, source)]));
+      card.setConfig({ type: 'custom:oriel-card', entity_ids: { electricity: [electricity], water: [water], fuel: [], power: [] }, statistics: { history: true, anchor: fixture.anchor, timezone: 'Europe/London' } });
+      card.hass = { states, callWS: async ({ entity_ids }) => ({ [entity_ids[0]]: fixture.sources[entity_ids[0]]?.history || [] }) };
+    </script>
+  </body>
+</html>

@@ -44,3 +44,28 @@ Then open [http://127.0.0.1:4173/home-assistant/oriel-card/test-harness.html](ht
 To add a new scenario, edit only `test-harness.html`; never paste actual
 Aldworth exports, Home Assistant databases, tokens, IP addresses or credentials
 into this test fixture.
+
+## Private Aldworth historical playback
+
+On the local machine that holds the private Recorder copy, build a separate,
+ignored fixture and open the playback page:
+
+```sh
+npm run build:oriel-historical-fixture
+```
+
+Then open:
+
+```text
+/home-assistant/oriel-card/aldworth-history-playground.html
+```
+
+The generated fixture is served only by the local Vite process from
+`public/oriel-private/`, which is ignored by Git.
+It currently includes only the two validated sources in the private manifest:
+House Input electricity and House Water. Fuel and backup power remain blank
+until their historical data passes the same validation process.
+
+The Aldworth playback fixes the weekly boundary to `Europe/London` and anchors
+the timeline to the archive's last recorded timestamp. This makes the weekly
+splits reproducible even when the test computer uses another timezone.

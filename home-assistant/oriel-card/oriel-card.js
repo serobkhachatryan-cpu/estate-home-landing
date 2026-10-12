@@ -66,7 +66,27 @@ const monday = (date) => {
   result.setDate(result.getDate() - (result.getDay() === 0 ? 6 : result.getDay() - 1));
   return result;
 };
-const weekRange = (index, anchor = new Date()) => {
+const zonedParts = (date, timeZone) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date).filter((part) => part.type !== 'literal').map((part) => [part.type, Number(part.value)]));
+const zonedMidnight = (year, month, day, timeZone) => {
+  let epoch = Date.UTC(year, month - 1, day);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const parts = zonedParts(new Date(epoch), timeZone);
+    epoch -= Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute) - epoch;
+  }
+  return new Date(epoch);
+};
+const zonedMonday = (date, timeZone) => {
+  const parts = zonedParts(date, timeZone);
+  const utcDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  utcDate.setUTCDate(utcDate.getUTCDate() - (utcDate.getUTCDay() === 0 ? 6 : utcDate.getUTCDay() - 1));
+  return zonedMidnight(utcDate.getUTCFullYear(), utcDate.getUTCMonth() + 1, utcDate.getUTCDate(), timeZone);
+};
+const weekRange = (index, anchor = new Date(), timeZone = null) => {
+  if (timeZone) {
+    const end = zonedMonday(anchor, timeZone); end.setUTCDate(end.getUTCDate() + 7 - index * 7);
+    const start = new Date(end); start.setUTCDate(start.getUTCDate() - 7);
+    return { start, end };
+  }
   const end = new Date(monday(anchor)); end.setDate(end.getDate() + 7 - index * 7);
   const start = new Date(end); start.setDate(start.getDate() - 7);
   return { start, end };
@@ -142,11 +162,24 @@ class OrielCard extends HTMLElement {
     return setting === true || Boolean(setting && typeof setting === "object" && setting.history === true);
   }
 
+  statisticsAnchor() {
+    const configured = this._config.statistics && typeof this._config.statistics === "object" ? this._config.statistics.anchor : null;
+    const parsed = configured ? new Date(configured) : null;
+    return parsed && Number.isFinite(parsed.getTime()) ? parsed : new Date();
+  }
+
+  statisticsTimeZone() {
+    const configured = this._config.statistics && typeof this._config.statistics === "object" ? this._config.statistics.timezone : null;
+    try { if (configured) new Intl.DateTimeFormat('en-GB', { timeZone: configured }); } catch { return null; }
+    return configured || null;
+  }
+
   requestHistory(entity) {
     if (!this.statisticsEnabled() || !entity || !this._hass || this._history.has(entity.entity_id) || this._historyLoading.has(entity.entity_id) || typeof this._hass.callWS !== "function") return;
-    const oldest = weekRange(HISTORY_WEEKS - 1).start;
+    const anchor = this.statisticsAnchor();
+    const oldest = weekRange(HISTORY_WEEKS - 1, anchor, this.statisticsTimeZone()).start;
     this._historyLoading.add(entity.entity_id);
-    this._hass.callWS({ type: "history/history_during_period", start_time: oldest.toISOString(), end_time: new Date().toISOString(), entity_ids: [entity.entity_id], minimal_response: true, no_attributes: true })
+    this._hass.callWS({ type: "history/history_during_period", start_time: oldest.toISOString(), end_time: anchor.toISOString(), entity_ids: [entity.entity_id], minimal_response: true, no_attributes: true })
       .then((response) => this._history.set(entity.entity_id, historyPoints(response, entity.entity_id)))
       .catch(() => this._history.set(entity.entity_id, []))
       .finally(() => { this._historyLoading.delete(entity.entity_id); this.render(); });
@@ -166,7 +199,7 @@ class OrielCard extends HTMLElement {
       ? this._config.archive_weekly_costs[system.id] : [];
     const liveHistory = historySource ? this._history.get(historySource.entity_id) || [] : [];
     const dynamicWeekly = historySource && this.statisticsEnabled()
-      ? Array.from({ length: HISTORY_WEEKS }, (_, index) => historyWeek(weekRange(index), liveHistory, historySource)) : [];
+      ? Array.from({ length: HISTORY_WEEKS }, (_, index) => historyWeek(weekRange(index, this.statisticsAnchor(), this.statisticsTimeZone()), liveHistory, historySource)) : [];
     const weeklyValues = weekly.length ? weekly : dynamicWeekly;
     const max = Math.max(1, ...weeklyValues.filter(Number.isFinite));
     const allSensors = this._config.show_catalog === true
