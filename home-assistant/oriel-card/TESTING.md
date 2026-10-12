@@ -14,8 +14,10 @@ npm run test:oriel-card
 ```
 
 The checks confirm that the card queries Recorder only when `statistics: true`
-is configured, requests history for one approved source only, and excludes an
-unapproved diagnostic sensor.
+is configured, requests the primary approved source first, and excludes an
+unapproved diagnostic sensor. An optional source-breakdown requests only its
+explicitly configured source IDs after its dropdown is opened; it never scans
+the entire state map.
 
 ## Open the visual playground
 
@@ -62,8 +64,11 @@ Then open:
 
 The generated fixture is served only by the local Vite process from
 `public/oriel-private/`, which is ignored by Git.
-It currently includes only the two validated sources in the private manifest:
-House Input electricity and House Water. Fuel and backup power remain blank
+It includes the approved House Input / House / Pool / Garage electrical meter
+split, separately metered Greenhouse, Garden Garage, Lodge and Office feeders,
+and House/Lodge/Main water meters. The playback labels the first group as a
+reconciled component split and the remaining sources as independent meters; it
+does not create an estate total from them. Fuel and backup power remain blank
 until their historical data passes the same validation process.
 
 The Aldworth playback fixes the weekly boundary to `Europe/London` and anchors

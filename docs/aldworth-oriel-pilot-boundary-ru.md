@@ -1,6 +1,6 @@
 # Aldworth — жёсткие границы пилота Oriel
 
-**Статус:** границы пилота v1.0 (для утверждения владельцем)
+**Статус:** границы пилота v1.1 (для утверждения владельцем)
 
 **Назначение:** зафиксировать, что именно Oriel делает на объекте Aldworth, какие данные ему разрешено получать, что он не делает ни при каких условиях и по какому процессу меняется объём работ.
 
@@ -38,10 +38,10 @@ Assistant instance.
 | Область | Разрешённый результат |
 |---|---|
 | Интерфейс | Один или оба независимых нативных интерфейса: `panel_custom` Oriel в sidebar по адресу `/oriel` и `custom:oriel-card` в обычном редактируемом Lovelace dashboard. Card не читает panel и panel не читает card: оба получают states из авторизованной HA-сессии. Card может стоять рядом с нативными HA cards; system-generated `Overview` не является местом установки произвольной custom card |
-| Тип данных | Текущие состояния согласованных сущностей из `hass.states`; при явном `statistics: true` — не более шести недель Recorder history **одной выбранной** allowlisted-сущности через уже авторизованную WebSocket-сессию HA (`history/history_during_period`, `minimal_response: true`, `no_attributes: true`) |
-| Представление | Panel сохраняет четыре weekly tabs: Electricity, Water, Fuel и Power. Card по умолчанию показывает те же согласованные utilities и может строить по ним Recorder weekly statistics при явной настройке; администратор также может задать точные `sensor_groups`. Полный raw catalogue включается только отдельным `show_catalog: true` и только для HA administrator. В обоих случаях источник, entity ID, текущее значение, unit и `Unavailable` / `No record` не подменяются догадкой |
+| Тип данных | Текущие состояния согласованных сущностей из `hass.states`; при явном `statistics: true` — не более шести недель Recorder history primary allowlisted-сущности через уже авторизованную WebSocket-сессию HA (`history/history_during_period`, `minimal_response: true`, `no_attributes: true`). Card может, только после раскрытия source-breakdown, запросить те же read-only данные максимум для 16 дополнительных **явно перечисленных** source IDs |
+| Представление | Panel сохраняет четыре weekly tabs: Electricity, Water, Fuel и Power. Card по умолчанию показывает те же согласованные utilities и может строить по ним Recorder weekly statistics при явной настройке; администратор также может задать точные `sensor_groups` и закрытую source-breakdown по подтверждённым meter/feeder IDs. Полный raw catalogue включается только отдельным `show_catalog: true` и только для HA administrator. В обоих случаях источник, entity ID, текущее значение, unit и `Unavailable` / `No record` не подменяются догадкой |
 | Финансовые состояния | Только индивидуальные monetary/cost состояния, уже опубликованные Home Assistant; без вычисляемой суммы, тарифа или прогноза от Oriel |
-| История | Для weekly timeline — только ограниченный запрос Recorder одной выбранной сущности; bulk import/export Recorder запрещён. История и live-state не смешиваются без явной маркировки |
+| История | Для weekly timeline — только ограниченный запрос Recorder primary-сущности; для раскрытой source-breakdown — не более 16 дополнительно явно configured sources. Bulk import/export Recorder запрещён. История и live-state не смешиваются без явной маркировки |
 | Доступ | Авторизованные пользователи Home Assistant в пределах их собственной HA-сессии; на строгом пилоте - администратор Home Assistant или конкретно письменно утверждённые named users |
 | Обновление | Замена одного JS-файла с versioned URL, проверкой YAML, Home Assistant backup и возможностью отката |
 | Поддержка | Диагностика отображения и data-quality для согласованных сущностей; только по утверждённому временному доступу |
@@ -119,6 +119,14 @@ Card: live source cards читают `hass.states`. Если в card YAML вне
 они не являются live telemetry и не должны обновляться автоматически без нового
 owner-approved data flow.
 
+Card source-breakdown разрешён только как закрытый по умолчанию, явный список
+`source_breakdowns.<system>.sources` (максимум 16 `sensor.*` IDs). Пока список
+закрыт, дополнительных Recorder-запросов нет. После открытия и только при
+`statistics: true` card может запросить недельную историю этих **точно
+перечисленных** IDs через ту же авторизованную HA WebSocket-сессию. Нельзя
+искать source по regex, названию комнаты или всему `hass.states`, запрашивать
+registries, атрибуты либо выгружать историю.
+
 - Для cumulative meters недельное значение — разница первого и последнего
 фактического значения в периоде. Для level/status источников используется
 последнее фактическое состояние периода. Отсутствующий период остаётся
@@ -126,6 +134,15 @@ owner-approved data flow.
 - Принимаются только фактически записанные local days/periods; неполный
 интервал всегда помечается количеством recorded days.
 - Каждый statistic ID остаётся отдельным источником; Oriel не создаёт «общий estate total» без подтверждённой схемы электричества/воды.
+- `relation: independent` никогда не суммируется с total. `relation: part_of_total`
+  может показать процент только если все компоненты за выбранную неделю имеют
+  ту же coverage и численно сходятся с approved parent meter в допустимой
+  погрешности округления. Иначе строка остаётся без percentage, а не получает
+  догадку.
+- Для Aldworth допустимые названия feeder/источника должны быть взяты из
+  утверждённой HA-конфигурации или отдельного topology approval. Название
+  устройства не превращает его автоматически в formal HA Area или физически
+  подтверждённое помещение.
 - Для cumulative meters используются правила, устойчивые к meter reset/correction; подозрительные интервалы помечаются или исключаются, а не сглаживаются.
 - Live reading всегда подписывается как `Live now`; исторический график всегда подписывается как `Recorded history`.
 - Нельзя представлять live-state как исторический факт, и нельзя выдавать историческое среднее за текущее состояние.
@@ -160,7 +177,7 @@ owner-approved data flow.
 3. MFA включается для удалённого admin access там, где Home Assistant/identity provider это поддерживает.
 4. Home Assistant не публикуется напрямую в открытый интернет ради Oriel. Remote support допускается только через owner-approved VPN/Tailscale или совместную сессию.
 5. `oriel-panel.js` и `oriel-card.js` не содержат token, secret, endpoint, tracking ID или внешний API call.
-6. Panel может использовать только уже авторизованную HA WebSocket-сессию и только `history/history_during_period` для одного выбранного allowlisted entity ID. Card читает только `hass.states` и configured static weekly values; оба интерфейса не имеют service-call capability.
+6. Panel может использовать только уже авторизованную HA WebSocket-сессию и только `history/history_during_period` для одного выбранного allowlisted entity ID. Card читает `hass.states`, configured static weekly values и, при включённом `statistics: true`, primary source и не более 16 source-breakdown IDs только после открытия dropdown. Оба интерфейса не имеют service-call capability.
 7. Публичный GitHub repository содержит только reviewed source code и documentation. Запрещено публиковать туда configuration.yaml, Recorder database, backups, screenshots с персональными данными, network details, entity exports, токены или credentials.
 8. Long-Lived Access Token, если когда-либо используется для bridge, хранится только в owner-controlled Keychain/secret manager; никогда не попадает в repository, pastebin, ticket, чат, URL или browser local storage.
 9. Перед обновлением panel/card создаётся Home Assistant backup; предыдущий рабочий JS asset сохраняется до успешной acceptance check.
@@ -193,7 +210,7 @@ owner-approved data flow.
 ### 9.2 Change Request обязателен для
 
 - добавления/удаления любого entity ID;
-- включения `show_catalog: true`, `statistics: true`, добавления/изменения `sensor_groups`, изменения списка пользователей dashboard или снятия admin-only защиты;
+- включения `show_catalog: true`, `statistics: true`, добавления/изменения `sensor_groups` или `source_breakdowns`, изменения списка пользователей dashboard или снятия admin-only защиты;
 - изменения data classification или аудитории;
 - изменения от read-only к control;
 - любой интеграции с облаком, W3DS, внешним сайтом, analytics, bridge или API;
@@ -222,7 +239,7 @@ owner-approved data flow.
 - Electricity показывает то же текущее `sensor.total_power`, что и Home Assistant, когда entity доступна.
 - Water показывает только разрешённые house/main/lodge states.
 - Existing Shelly cost states отображаются индивидуально; суммарная стоимость не изобретается.
-- Panel weekly timeline и Card при явно включённом `statistics: true` посылают не более одного `history/history_during_period` запроса за выбор, только к allowlisted entity, не более чем за шесть недель и без attributes. Imported weekly values всегда маркируются как recorded/imported, а не live.
+- Panel weekly timeline и Card при явно включённом `statistics: true` посылают `history/history_during_period` только к allowlisted entity, не более чем за шесть недель и без attributes. Card не делает source-breakdown запросов, пока dropdown закрыт; после открытия может обратиться не более чем к 16 дополнительно явно configured IDs. Imported weekly values всегда маркируются как recorded/imported, а не live.
 - Недоступный источник отображается как `Unavailable` или отсутствует по правилам интерфейса; не заменяется нулём.
 - Нажатие на любой элемент интерфейса не вызывает изменения state устройства.
 - После обновления доступен rollback на предыдущий asset и результат повторно проходит эти проверки.
