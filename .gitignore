@@ -49,6 +49,7 @@ next-env.d.ts
 # private investor exports and Home Assistant recorder backups
 /data/imports/
 /public/oriel-private/
+/home-assistant/oriel-card/test-fixtures/
 
 # local screenshots
 .tmp-screens/
