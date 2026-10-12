@@ -34,6 +34,7 @@ const rules = {
 };
 
 const DEFAULT_HISTORY_WEEKS = 6;
+const MAX_BREAKDOWN_SOURCES = 16;
 const DAY_MS = 86400000;
 const esc = (value) => String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 const attrs = (entity) => entity && entity.attributes && typeof entity.attributes === "object" ? entity.attributes : {};
@@ -188,6 +189,7 @@ class OrielCard extends HTMLElement {
     this._selected = "electricity";
     this._selectedWeek = 0;
     this._expanded = false;
+    this._breakdownOpen = new Map();
     this._hass = null;
     this._config = {};
     this._history = new Map();
@@ -215,7 +217,7 @@ class OrielCard extends HTMLElement {
     Promise.resolve().then(() => { this._renderQueued = false; this.render(); });
   }
 
-  getCardSize() { return this._expanded ? 24 : 15; }
+  getCardSize() { return this._expanded || [...this._breakdownOpen.values()].some(Boolean) ? 24 : 15; }
 
   systems() {
     const custom = Array.isArray(this._config.sensor_groups) ? this._config.sensor_groups
@@ -281,6 +283,62 @@ class OrielCard extends HTMLElement {
     return Array.isArray(candidate) ? candidate.map(numeric) : [];
   }
 
+  sourceBreakdownConfig(systemId) {
+    const candidate = this._config.source_breakdowns && this._config.source_breakdowns[systemId];
+    if (Array.isArray(candidate)) return { sources: candidate };
+    if (!candidate || typeof candidate !== "object" || !Array.isArray(candidate.sources)) return null;
+    return candidate;
+  }
+
+  sourceBreakdownRows(system, weeks, hasArchive) {
+    const config = this.sourceBreakdownConfig(system.id);
+    if (!config || !weeks.length) return { config, rows: [] };
+    const stateMap = this._hass && this._hass.states || {};
+    const seen = new Set();
+    const rows = [];
+
+    for (const raw of config.sources.slice(0, MAX_BREAKDOWN_SOURCES)) {
+      if (!raw || typeof raw !== "object") continue;
+      const entityId = typeof raw.entity_id === "string" ? raw.entity_id.trim() : "";
+      if (!/^sensor\./i.test(entityId) || seen.has(entityId)) continue;
+      seen.add(entityId);
+      const entity = stateMap[entityId] || null;
+      const rawValues = Array.isArray(raw.archive_weekly_values) ? raw.archive_weekly_values.map(numeric) : [];
+      const rawDays = Array.isArray(raw.archive_weekly_recorded_days)
+        ? raw.archive_weekly_recorded_days.map(daysFor) : [];
+      const rawStarts = Array.isArray(raw.archive_week_starts) ? raw.archive_week_starts : [];
+      const archiveConfigured = rawValues.length > 0 || rawDays.length > 0 || rawStarts.length > 0;
+      const valuesAligned = rawValues.length === weeks.length && rawValues.length > 0;
+      const daysAligned = rawDays.length === 0 || rawDays.length === weeks.length;
+      const startsAligned = rawStarts.length === 0 || (rawStarts.length === weeks.length
+        && rawStarts.every((start, index) => String(start) === weeks[index].startIso));
+      const archiveUsable = valuesAligned && daysAligned && startsAligned;
+      const canUseDynamicHistory = !hasArchive && !archiveConfigured && this.statisticsEnabled() && entity;
+      const history = entity ? this._history.get(entityId) || [] : [];
+      const values = archiveUsable
+        ? rawValues
+        : canUseDynamicHistory
+          ? weeks.map((week) => historyWeek(weekRange(week.index, this.statisticsAnchor(), this.statisticsTimeZone()), history, entity))
+          : [];
+      const unit = typeof raw.unit === "string" && raw.unit.trim()
+        ? raw.unit.trim() : entity ? attrs(entity).unit_of_measurement || system.unit : system.unit;
+      rows.push({
+        entityId,
+        entity,
+        label: typeof raw.label === "string" && raw.label.trim() ? raw.label.trim() : entity ? name(entity) : entityId,
+        role: typeof raw.role === "string" && raw.role.trim() ? raw.role.trim() : raw.relation === "part_of_total" ? "Part of selected total" : "Independent meter",
+        relation: raw.relation === "part_of_total" ? "part_of_total" : "independent",
+        unit,
+        values,
+        days: archiveUsable ? (rawDays.length ? rawDays : weeks.map(() => null)) : weeks.map(() => null),
+        archiveConfigured,
+        archiveUsable,
+        unavailableReason: archiveConfigured && !archiveUsable ? "No aligned archive history" : !entity && !archiveUsable ? "Not available in this dashboard" : null,
+      });
+    }
+    return { config, rows };
+  }
+
   afterRender() {
     this.shadowRoot.querySelectorAll("[data-system]").forEach((button) => button.addEventListener("click", () => {
       this._selected = button.dataset.system;
@@ -295,7 +353,12 @@ class OrielCard extends HTMLElement {
       this._selectedWeek = button.dataset.jump === "oldest" ? Number.parseInt(button.dataset.oldest, 10) || 0 : 0;
       this.render();
     }));
-    const details = this.shadowRoot.querySelector("details");
+    const breakdown = this.shadowRoot.querySelector("[data-breakdown]");
+    if (breakdown) breakdown.addEventListener("toggle", () => {
+      this._breakdownOpen.set(breakdown.dataset.breakdown || this._selected, breakdown.open);
+      if (breakdown.open) this.render();
+    });
+    const details = this.shadowRoot.querySelector("[data-catalog]");
     if (details) details.addEventListener("toggle", () => { this._expanded = details.open; });
     const focused = this.shadowRoot.querySelector("[data-focus-week]");
     if (focused && typeof focused.scrollIntoView === "function") Promise.resolve().then(() => focused.scrollIntoView({ block: "center", behavior: "auto" }));
@@ -358,6 +421,38 @@ class OrielCard extends HTMLElement {
     const safeWeek = Math.max(0, Math.min(this._selectedWeek, Math.max(weeks.length - 1, 0)));
     this._selectedWeek = safeWeek;
     const selectedWeek = weeks[safeWeek] || null;
+    const sourceBreakdown = this.sourceBreakdownRows(system, weeks, hasArchive);
+    const configuredBreakdownOpen = sourceBreakdown.config && sourceBreakdown.config.open === true;
+    const breakdownOpen = this._breakdownOpen.has(system.id)
+      ? this._breakdownOpen.get(system.id) : configuredBreakdownOpen;
+    if (breakdownOpen && !hasArchive) {
+      sourceBreakdown.rows.filter((row) => !row.archiveConfigured && row.entity).forEach((row) => this.requestHistory(row.entity, requestedWeeks));
+    }
+    const selectedBreakdownRows = sourceBreakdown.rows.map((row) => ({
+      ...row,
+      value: row.values[safeWeek] ?? null,
+      days: row.days[safeWeek] ?? null,
+      loading: Boolean(row.entity && this._historyLoading.has(row.entityId)),
+    }));
+    const componentRows = selectedBreakdownRows.filter((row) => row.relation === "part_of_total");
+    const componentUse = sum(componentRows.map((row) => row.value));
+    const componentCoverageMatches = Boolean(selectedWeek && selectedWeek.days !== null)
+      && componentRows.length > 0
+      && componentRows.every((row) => finite(row.value) && row.days === selectedWeek.days);
+    const componentTolerance = selectedWeek && finite(selectedWeek.value)
+      ? Math.max(.1, Math.abs(selectedWeek.value) * .01) : null;
+    const componentsReconcile = Boolean(componentCoverageMatches && selectedWeek && finite(selectedWeek.value)
+      && Math.abs(componentUse - selectedWeek.value) <= componentTolerance);
+    const breakdownBarMax = Math.max(1, ...selectedBreakdownRows.map((row) => Math.abs(row.value || 0)));
+    const breakdownTitle = sourceBreakdown.config && typeof sourceBreakdown.config.title === "string" && sourceBreakdown.config.title.trim()
+      ? sourceBreakdown.config.title.trim() : "Measured source breakdown";
+    const configuredBreakdownNote = sourceBreakdown.config && typeof sourceBreakdown.config.note === "string"
+      ? sourceBreakdown.config.note.trim() : "";
+    const breakdownNote = configuredBreakdownNote || (componentRows.length
+      ? componentsReconcile
+        ? "Approved component meters reconcile to the selected total for this recorded week."
+        : "Component shares are withheld until their recorded coverage and the selected total reconcile."
+      : "Independent meters are displayed separately and are not added to the selected total.");
     const timelineWeeks = [...weeks].reverse();
     const actualCostTotal = sum(weeks.map((week) => week.cost));
     const planTotal = sum(weeks.map((week) => week.plan));
@@ -407,8 +502,8 @@ class OrielCard extends HTMLElement {
         .overview{padding:16px 18px 14px;border-bottom:1px solid rgba(222,197,150,.7)}.eyebrow{margin:0;color:#d9b779;font-size:10px;font-weight:800;letter-spacing:.15em;text-transform:uppercase}.summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:12px}.summary{min-height:72px;padding:11px;border:1px solid rgba(222,197,150,.25);border-radius:12px;background:rgba(255,255,255,.09)}.summary span,.context-label{display:block;color:rgba(248,243,233,.52);font-size:9px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.summary strong{display:block;margin-top:5px;font-size:21px;line-height:1.05;letter-spacing:-.05em;overflow-wrap:anywhere}.comparison{min-height:16px;margin:10px 1px 0;color:#cad6d5;font-size:11px}.comparison b{color:#d9b779}.comparison.over b{color:#e4b6a1}.comparison.under b{color:#b8d2bc}
         .focus{padding:16px 18px 12px}.focus-head{display:flex;justify-content:space-between;gap:12px}.focus-left{min-width:0}.focus-title{margin:0;color:rgba(248,243,233,.52);font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}.focus-value{margin:6px 0 0;font-size:31px;font-weight:800;letter-spacing:-.06em;line-height:1}.focus-use{margin:6px 0 0;color:#ccd7d8;font-size:11px}.focus-date{margin:8px 0 0;color:#e7e2d8;font-size:13px;line-height:1.25}.focus-code{margin:3px 0 0;color:rgba(248,243,233,.46);font-size:9px;letter-spacing:.03em}.status{text-align:right;white-space:nowrap}.status b{display:block;color:#d9b779;font-size:12px}.status.over b{color:#e4b6a1}.status.under b{color:#b8d2bc}.status span{display:block;margin-top:6px;color:rgba(248,243,233,.5);font-size:10px}.focus-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px}.mini{min-width:0;padding:9px;border-radius:10px;background:rgba(255,255,255,.06)}.mini span{display:block;color:rgba(248,243,233,.45);font-size:8px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.mini strong{display:block;margin-top:4px;font-size:13px;letter-spacing:-.03em;overflow-wrap:anywhere}.mini small{display:block;margin-top:3px;color:rgba(248,243,233,.45);font-size:8px;line-height:1.25}
         .timeline-wrap{padding:0 12px 0}.timeline-label{margin:2px 6px 7px;color:rgba(248,243,233,.38);font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.timeline-frame{position:relative}.focus-line{pointer-events:none;position:absolute;z-index:2;left:0;right:0;top:50%;height:1px;background:#d9b779}.timeline{height:268px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y mandatory;padding:112px 2px;scroll-behavior:smooth}.week{display:grid;grid-template-columns:86px minmax(46px,1fr) 84px;align-items:center;gap:8px;width:100%;height:46px;padding:0 5px;border:0;background:rgba(255,255,255,.02);color:#e7ece9;text-align:left;cursor:pointer;scroll-snap-align:center}.week:hover,.week[aria-current="true"]{background:rgba(255,255,255,.09)}.week[aria-current="true"] .week-date{color:#e4c27b;font-weight:800}.week-date{font-size:10px;line-height:1.15}.week-date small{display:block;margin-top:2px;color:rgba(248,243,233,.38);font-size:8px}.track{position:relative;height:13px}.track::before{content:"";position:absolute;inset:2px 0;border-radius:5px;background:#203847}.bar{position:absolute;left:0;bottom:3px;height:7px;border-radius:5px;background:#f7f3e9}.bar.under{background:#c5d6c4}.bar.over{background:#e4b6a1}.bar.recorded{background:#9db3b4}.plan-tick{position:absolute;z-index:1;top:0;bottom:0;width:1px;border-left:1px dashed rgba(248,243,233,.64)}.week-value{text-align:right;font-size:10px;line-height:1.1}.week-value strong{display:block;font-size:10px}.week-value .no-record{color:rgba(248,243,233,.42)}.controls{display:flex;gap:6px;padding:10px 14px;border-top:1px solid rgba(255,255,255,.1)}.controls button{border:0;border-radius:99px;background:rgba(255,255,255,.1);color:#e9edeb;padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer}
-        .sources{background:#f8f4ec;color:#173448;padding:15px 18px 18px}.sources-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}.sources h3{margin:0;font-size:15px;letter-spacing:-.03em}.sources-head span{color:#78868d;font-size:10px}.source-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}.source{min-width:0;padding:10px;border:1px solid #ded4c4;border-radius:10px;background:#fffdf8}.source .role{display:block;color:#8c7040;font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.source b{display:block;overflow:hidden;margin-top:4px;text-overflow:ellipsis;white-space:nowrap;font-size:11px}.source .source-value{display:block;margin-top:5px;color:#8c7040;font-size:11px}.source small{display:block;overflow:hidden;margin-top:4px;color:#71808a;font-size:8px;text-overflow:ellipsis;white-space:nowrap}.source-note{margin:10px 0 0;color:#667780;font-size:10px;line-height:1.4}.empty{padding:14px;color:#a8b7bc;font-size:11px;line-height:1.45}.sources .empty{border:1px dashed #d6c9b8;border-radius:10px;color:#61717a}
-        details{margin:0 18px 18px;border:1px solid #ddd2c1;border-radius:12px;background:#fffdf8;overflow:hidden}summary{cursor:pointer;padding:12px;color:#173448;font-size:12px;font-weight:800}.catalog{padding:0 12px 12px}.catalog h4{margin:14px 0 7px;color:#8c7040;font-size:9px;letter-spacing:.12em;text-transform:uppercase}.catalog .source-grid{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:0}.footnote{background:#f8f4ec;color:#74838a;padding:0 18px 17px;font-size:9px;line-height:1.45}@media(max-width:420px){.tab{font-size:9px}.week{grid-template-columns:80px minmax(40px,1fr) 67px}.focus-value{font-size:28px}.source-grid,.catalog .source-grid{grid-template-columns:1fr}.timeline{height:250px}.timeline-wrap{padding:0 9px}.overview,.focus{padding-left:14px;padding-right:14px}}
+        .breakdown{margin:0 12px 15px;border:1px solid rgba(222,197,150,.42);border-radius:13px;background:#172c3a;overflow:hidden}.breakdown summary{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;padding:12px 13px;color:#f7f3e9;font-size:12px;font-weight:800}.breakdown summary span{min-width:0}.breakdown summary em{flex:none;color:#d9b779;font-size:9px;font-style:normal;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.breakdown-body{padding:0 12px 12px;border-top:1px solid rgba(222,197,150,.2)}.breakdown-note{margin:10px 0 9px;color:rgba(248,243,233,.62);font-size:10px;line-height:1.42}.breakdown-row{display:grid;grid-template-columns:minmax(83px,1.1fr) minmax(40px,1fr) minmax(62px,.8fr);align-items:center;gap:8px;padding:9px 0;border-top:1px solid rgba(255,255,255,.08)}.breakdown-row:first-of-type{border-top:0}.breakdown-label{min-width:0}.breakdown-label b{display:block;overflow:hidden;color:#f7f3e9;font-size:11px;text-overflow:ellipsis;white-space:nowrap}.breakdown-label small{display:block;overflow:hidden;margin-top:3px;color:rgba(248,243,233,.47);font-size:8px;text-overflow:ellipsis;white-space:nowrap}.breakdown-track{position:relative;height:12px}.breakdown-track::before{content:"";position:absolute;inset:2px 0;border-radius:5px;background:#294252}.breakdown-bar{position:absolute;left:0;bottom:3px;height:6px;border-radius:5px;background:#9db3b4}.breakdown-bar.component{background:#d9b779}.breakdown-value{text-align:right}.breakdown-value strong{display:block;color:#f7f3e9;font-size:11px;line-height:1.1}.breakdown-value small{display:block;margin-top:3px;color:rgba(248,243,233,.5);font-size:8px;line-height:1.15}.breakdown-unavailable{color:rgba(248,243,233,.47)!important}.sources{background:#f8f4ec;color:#173448;padding:15px 18px 18px}.sources-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}.sources h3{margin:0;font-size:15px;letter-spacing:-.03em}.sources-head span{color:#78868d;font-size:10px}.source-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}.source{min-width:0;padding:10px;border:1px solid #ded4c4;border-radius:10px;background:#fffdf8}.source .role{display:block;color:#8c7040;font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.source b{display:block;overflow:hidden;margin-top:4px;text-overflow:ellipsis;white-space:nowrap;font-size:11px}.source .source-value{display:block;margin-top:5px;color:#8c7040;font-size:11px}.source small{display:block;overflow:hidden;margin-top:4px;color:#71808a;font-size:8px;text-overflow:ellipsis;white-space:nowrap}.source-note{margin:10px 0 0;color:#667780;font-size:10px;line-height:1.4}.empty{padding:14px;color:#a8b7bc;font-size:11px;line-height:1.45}.sources .empty{border:1px dashed #d6c9b8;border-radius:10px;color:#61717a}
+        details[data-catalog]{margin:0 18px 18px;border:1px solid #ddd2c1;border-radius:12px;background:#fffdf8;overflow:hidden}details[data-catalog] summary{cursor:pointer;padding:12px;color:#173448;font-size:12px;font-weight:800}.catalog{padding:0 12px 12px}.catalog h4{margin:14px 0 7px;color:#8c7040;font-size:9px;letter-spacing:.12em;text-transform:uppercase}.catalog .source-grid{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:0}.footnote{background:#f8f4ec;color:#74838a;padding:0 18px 17px;font-size:9px;line-height:1.45}@media(max-width:420px){.tab{font-size:9px}.week{grid-template-columns:80px minmax(40px,1fr) 67px}.focus-value{font-size:28px}.source-grid,.catalog .source-grid{grid-template-columns:1fr}.breakdown-row{grid-template-columns:76px minmax(34px,1fr) 58px;gap:6px}.timeline{height:250px}.timeline-wrap{padding:0 9px}.overview,.focus{padding-left:14px;padding-right:14px}}
       </style>
       <article class="card">
         <header><div><div class="brand">Oriel</div><div class="sub">Aldworth · recorded Home Assistant history</div></div><div class="state"><i class="dot"></i>read only</div></header>
@@ -445,10 +540,18 @@ class OrielCard extends HTMLElement {
             return `<button class="week" type="button" role="option" data-week="${week.index}" ${focused ? "data-focus-week aria-current=\"true\" aria-selected=\"true\"" : "aria-selected=\"false\""} aria-label="${esc(`${week.calendar}: ${primary === null ? "no record" : format(primary, sourceUnit, hasCompleteCostSeries)}${accessibleDetail}`)}"><span class="week-date">${esc(week.range)}<small>Mon–Sun · W${week.isoWeek}${week.days !== null ? ` · ${week.days}d` : ""}</small></span><span class="track"><i class="bar ${tone}" style="width:${ratio}%"></i>${planRatio === null ? "" : `<i class="plan-tick" style="left:${planRatio}%"></i>`}</span><span class="week-value">${finite(primary) ? `<strong>${esc(format(primary, sourceUnit, hasCompleteCostSeries))}</strong>` : `<strong class="no-record">No record</strong>`}</span></button>`;
           }).join("")}</div></div></section>
           <div class="controls"><button type="button" data-jump="oldest" data-oldest="${weeks.length - 1}">Oldest</button><button type="button" data-jump="latest">Latest</button></div>
+          ${selectedBreakdownRows.length ? `<section class="breakdown-zone"><details class="breakdown" data-breakdown="${esc(system.id)}" ${breakdownOpen ? "open" : ""}><summary><span>${esc(breakdownTitle)}</span><em>${selectedBreakdownRows.length} approved source${selectedBreakdownRows.length === 1 ? "" : "s"}</em></summary><div class="breakdown-body"><p class="breakdown-note">${esc(breakdownNote)}</p>${selectedBreakdownRows.map((row) => {
+            const width = finite(row.value) ? Math.max(4, Math.round(Math.abs(row.value) / breakdownBarMax * 100)) : 0;
+            const share = componentsReconcile && row.relation === "part_of_total" && finite(row.value) && selectedWeek && finite(selectedWeek.value)
+              ? `${Math.round(row.value / selectedWeek.value * 100)}% of total` : row.role;
+            const coverage = row.days !== null ? `${row.days} recorded day${row.days === 1 ? "" : "s"}`
+              : row.loading ? "Loading approved history…" : row.unavailableReason || "Coverage unavailable";
+            return `<div class="breakdown-row"><div class="breakdown-label"><b title="${esc(row.label)}">${esc(row.label)}</b><small title="${esc(row.entityId)}">${esc(share)} · ${esc(row.entityId)}</small></div><div class="breakdown-track"><i class="breakdown-bar ${row.relation === "part_of_total" ? "component" : ""}" style="width:${width}%"></i></div><div class="breakdown-value"><strong class="${finite(row.value) ? "" : "breakdown-unavailable"}">${finite(row.value) ? esc(format(row.value, row.unit)) : "—"}</strong><small>${esc(coverage)}</small>${row.entity ? `<small>Live ${esc(display(row.entity))}</small>` : ""}</div></div>`;
+          }).join("")}</div></details></section>` : ""}
         ` : `<section class="empty">${historyLoading ? "Loading Recorder statistics for the approved source…" : this.statisticsEnabled() ? "No recorded statistics are available for the approved source yet." : "Weekly statistics are disabled. Add statistics: true to this card configuration."}</section>`}
         <section class="sources"><div class="sources-head"><h3>Sources used</h3><span>${sourceCards.filter((source) => source.live).length} live · ${sourceCards.length} approved</span></div>${sourceCards.length ? `<div class="source-grid">${sourceCards.map((source) => `<div class="source"><span class="role">${esc(source.role)}</span><b title="${esc(source.label)}">${esc(source.label)}</b><span class="source-value">${esc(source.value)}</span><small>${esc(source.entityId)}</small></div>`).join("")}</div>` : `<div class="empty">No approved source in this system.</div>`}<p class="source-note">${hasCompleteCostSeries ? `${esc(costLabel)} is shown only for the matching archived weeks; it is not an invoice or cash-spend ledger.` : archiveWarnings.length ? esc(archiveWarnings.join(" · ")) : "Add approved cost sources and matching archived weekly costs only when their source and coverage have been validated."}</p></section>
-        ${allSensors.length ? `<details ${this._expanded ? "open" : ""}><summary>Full administrator sensor catalogue · ${allSensors.filter(available).length}/${allSensors.length} available</summary><div class="catalog">${Object.entries(groups).sort(([a,], [b,]) => a.localeCompare(b)).map(([label, entries]) => `<h4>${esc(label)} · ${entries.length}</h4><div class="source-grid">${entries.sort((a, b) => name(a).localeCompare(name(b))).map((entity) => `<div class="source"><b title="${esc(name(entity))}">${esc(name(entity))}</b><span class="source-value">${esc(display(entity))}</span><small>${esc(entity.entity_id)}</small></div>`).join("")}</div>`).join("")}</div></details>` : ""}
-        <div class="footnote">Oriel reads approved Home Assistant states already present in this signed-in dashboard. ${this.statisticsEnabled() ? "Weekly consumption statistics use a read-only Recorder query for the selected approved source only." : "No Recorder history is requested."} It has no control buttons, external requests, tokens or service calls.</div>
+        ${allSensors.length ? `<details data-catalog ${this._expanded ? "open" : ""}><summary>Full administrator sensor catalogue · ${allSensors.filter(available).length}/${allSensors.length} available</summary><div class="catalog">${Object.entries(groups).sort(([a,], [b,]) => a.localeCompare(b)).map(([label, entries]) => `<h4>${esc(label)} · ${entries.length}</h4><div class="source-grid">${entries.sort((a, b) => name(a).localeCompare(name(b))).map((entity) => `<div class="source"><b title="${esc(name(entity))}">${esc(name(entity))}</b><span class="source-value">${esc(display(entity))}</span><small>${esc(entity.entity_id)}</small></div>`).join("")}</div>`).join("")}</div></details>` : ""}
+        <div class="footnote">Oriel reads approved Home Assistant states already present in this signed-in dashboard. ${this.statisticsEnabled() ? "Weekly consumption statistics use read-only Recorder queries only for explicitly configured sources." : "No Recorder history is requested."} It has no control buttons, external requests, tokens or service calls.</div>
       </article>`;
     this.afterRender();
   }

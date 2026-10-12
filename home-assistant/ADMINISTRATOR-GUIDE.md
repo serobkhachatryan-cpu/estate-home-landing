@@ -85,7 +85,7 @@ integration.
 4. Enter this URL:
 
    ```text
-   /local/oriel/oriel-card.js?v=1
+   /local/oriel/oriel-card.js?v=7
    ```
 
 5. Choose **JavaScript module**.
@@ -131,6 +131,53 @@ that navigation choice.
 Recorder for the selected approved source. It creates the six-week chart from
 recorded states; no data leaves Home Assistant and no device service is called.
 The card deliberately does not estimate a blank week.
+
+### A3b. Optional source / feeder breakdown
+
+The card can show the focus week's overall value and an expandable breakdown
+by explicitly approved meters or electrical feeders. This is appropriate only
+where an administrator has confirmed the physical relationship. It is not an
+automatic scan for rooms or sensors.
+
+```yaml
+source_breakdowns:
+  electricity:
+    title: "Where electricity was metered"
+    note: "Only approved component feeders may be compared with the total."
+    sources:
+      - entity_id: sensor.APPROVED_HOUSE_FEEDER_ENERGY
+        label: House
+        relation: part_of_total
+        archive_weekly_values: ["<latest_kwh>", "<previous_kwh>"]
+        archive_weekly_recorded_days: ["<latest_days>", "<previous_days>"]
+      - entity_id: sensor.APPROVED_POOL_FEEDER_ENERGY
+        label: Pool
+        relation: part_of_total
+        archive_weekly_values: ["<latest_kwh>", "<previous_kwh>"]
+        archive_weekly_recorded_days: ["<latest_days>", "<previous_days>"]
+  water:
+    title: "Independent water meters"
+    sources:
+      - entity_id: sensor.APPROVED_LODGE_WATER_METER
+        label: Lodge Water
+        relation: independent
+        archive_weekly_values: ["<latest_litres>", "<previous_litres>"]
+        archive_weekly_recorded_days: ["<latest_days>", "<previous_days>"]
+```
+
+`source_breakdowns` is a separate exact allowlist, so the sources do not need
+to be repeated in `entity_ids`. Source archive arrays must be aligned, in the
+same latest-to-oldest UK Monday–Sunday order, with the parent system's archive
+arrays. If the arrays are missing or misaligned, that row says **No aligned
+archive history** rather than displaying zero or an estimate.
+
+The default `relation: independent` is never summed with the overall value.
+`relation: part_of_total` only allows a percentage when all components have the
+same recorded-day coverage and reconcile to the parent meter within rounding
+tolerance. The card never allocates a tariff estimate, invoice, cash payment
+or GBP spend across sources. With no imported archive, opening this dropdown
+can make read-only Recorder requests only for its explicit sources (maximum
+16); closing it makes no extra history request.
 
 ### A4. Optional: full trusted-admin catalogue
 
@@ -209,6 +256,9 @@ After installation:
 
 - The card/panel opens without an external login screen.
 - Each displayed source matches its state in **Developer tools → States**.
+- A source-breakdown row is either explicitly configured and aligned with the
+  selected week, or it is visibly withheld; independent meters are not added
+  together.
 - A missing state remains `Unavailable` / `No data`; it is not converted to
   zero or an estimate.
 - There are no buttons that control a Home Assistant device.

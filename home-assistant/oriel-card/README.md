@@ -7,7 +7,7 @@ This is a read-only custom card for a standard Home Assistant dashboard. It is
 not a `panel_custom` page.
 
 1. Copy `oriel-card.js` to `/config/www/oriel/oriel-card.js`.
-2. Add `/local/oriel/oriel-card.js?v=6` as a JavaScript module resource in
+2. Add `/local/oriel/oriel-card.js?v=7` as a JavaScript module resource in
    **Settings → Dashboards → Resources**.
 3. Add a Manual card to any dashboard:
 
@@ -54,6 +54,60 @@ archive_source_details:
 archive_anchor: "2026-09-19T12:00:00.000Z"
 archive_timezone: Europe/London
 ```
+
+## Optional measured source breakdown
+
+The focus-week total can have an expandable, explicitly configured breakdown
+by meter or feeder. This is useful for a verified circuit split such as a
+House Input meter with distinct House, Pool and Garage feeders, or for showing
+separate water meters without pretending they are one estate total.
+
+```yaml
+source_breakdowns:
+  electricity:
+    title: "Where electricity was metered"
+    open: false
+    note: "Only the three approved component feeders are compared with House Input."
+    sources:
+      - entity_id: sensor.approved_house_feeder_energy
+        label: House
+        relation: part_of_total
+        archive_weekly_values: ["<latest_kwh>", "<previous_kwh>"]
+        archive_weekly_recorded_days: ["<latest_days>", "<previous_days>"]
+      - entity_id: sensor.approved_pool_feeder_energy
+        label: Pool
+        relation: part_of_total
+        archive_weekly_values: ["<latest_kwh>", "<previous_kwh>"]
+        archive_weekly_recorded_days: ["<latest_days>", "<previous_days>"]
+  water:
+    title: "Independent water meters"
+    note: "These meters are shown separately and are not added together."
+    sources:
+      - entity_id: sensor.approved_lodge_water_meter
+        label: Lodge Water
+        relation: independent
+        archive_weekly_values: ["<latest_litres>", "<previous_litres>"]
+        archive_weekly_recorded_days: ["<latest_days>", "<previous_days>"]
+```
+
+`source_breakdowns` is an additional explicit allowlist: it does not discover
+similar sensors and its source IDs do not need to be duplicated under
+`entity_ids`. A source archive series must have exactly the same number and
+order of weeks as the parent system. If `archive_week_starts` is supplied for a
+source, every date must match the parent UK Monday at the same position.
+Misaligned history is withheld, never converted to zero.
+
+`relation: part_of_total` does **not** make the card assume that meters can be
+summed. It permits a percentage only for the selected week when every component
+has matching recorded-day coverage and their values reconcile to the displayed
+parent total within a small rounding tolerance. `relation: independent` is the
+default and is never added to the total. The card does not allocate a tariff
+estimate, bill, cash payment or GBP figure across a breakdown.
+
+Without private archive arrays, a breakdown source can use Recorder history
+only when `statistics: true` is enabled and the reader opens the dropdown. The
+card then makes a read-only history request for each explicitly configured
+source (maximum 16); it never discovers or queries all sensors.
 
 `archive_week_starts` is the strongest audit trail: use explicit UK Mondays
 for every imported row. If it is omitted, `archive_anchor` and

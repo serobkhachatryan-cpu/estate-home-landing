@@ -144,3 +144,134 @@ test('withholds tariff pounds when matching coverage and approved cost metadata 
   assert.match(subject.shadowRoot.innerHTML, /tariff estimate withheld/);
   assert.match(subject.shadowRoot.innerHTML, /290 kWh/);
 });
+
+test('renders an explicitly approved, reconciled feeder breakdown without allocating tariff money', async () => {
+  const subject = card();
+  subject.setConfig({
+    type: 'custom:oriel-card',
+    archive_anchor: '2026-09-19T12:00:00.000Z',
+    archive_timezone: 'Europe/London',
+    entity_ids: { electricity: ['sensor.fixture_total'], water: [], fuel: [], power: [] },
+    archive_weekly_values: { electricity: [100, 50] },
+    archive_week_starts: { electricity: ['2026-09-14', '2026-09-07'] },
+    archive_weekly_recorded_days: { electricity: [5, 7] },
+    source_breakdowns: {
+      electricity: {
+        open: true,
+        title: 'Metered House Input feeders',
+        sources: [
+          { entity_id: 'sensor.fixture_house', label: 'House', relation: 'part_of_total', archive_weekly_values: [55, 20], archive_weekly_recorded_days: [5, 7] },
+          { entity_id: 'sensor.fixture_pool', label: 'Pool', relation: 'part_of_total', archive_weekly_values: [30, 20], archive_weekly_recorded_days: [5, 7] },
+          { entity_id: 'sensor.fixture_garage', label: 'Garage', relation: 'part_of_total', archive_weekly_values: [15, 10], archive_weekly_recorded_days: [5, 7] },
+        ],
+      },
+    },
+  });
+  subject.hass = {
+    states: {
+      'sensor.fixture_total': state('sensor.fixture_total', 4200, 'House Input', 'kWh', 'energy'),
+      'sensor.fixture_house': state('sensor.fixture_house', 2200, 'House', 'kWh', 'energy'),
+      'sensor.fixture_pool': state('sensor.fixture_pool', 1400, 'Pool', 'kWh', 'energy'),
+      'sensor.fixture_garage': state('sensor.fixture_garage', 600, 'Garage', 'kWh', 'energy'),
+    },
+  };
+  await Promise.resolve(); await Promise.resolve();
+  assert.match(subject.shadowRoot.innerHTML, /Metered House Input feeders/);
+  assert.match(subject.shadowRoot.innerHTML, /House/);
+  assert.match(subject.shadowRoot.innerHTML, /Pool/);
+  assert.match(subject.shadowRoot.innerHTML, /Garage/);
+  assert.match(subject.shadowRoot.innerHTML, /55% of total/);
+  assert.match(subject.shadowRoot.innerHTML, /30 kWh/);
+  assert.match(subject.shadowRoot.innerHTML, /Approved component meters reconcile/);
+  assert.doesNotMatch(subject.shadowRoot.innerHTML, /£30/);
+});
+
+test('withholds a misaligned breakdown series instead of showing a synthetic zero or percentage', async () => {
+  const subject = card();
+  subject.setConfig({
+    type: 'custom:oriel-card',
+    entity_ids: { electricity: ['sensor.fixture_total'], water: [], fuel: [], power: [] },
+    archive_weekly_values: { electricity: [100, 50] },
+    archive_weekly_recorded_days: { electricity: [5, 7] },
+    source_breakdowns: {
+      electricity: {
+        open: true,
+        sources: [
+          { entity_id: 'sensor.fixture_pool', label: 'Pool', relation: 'part_of_total', archive_weekly_values: [30] },
+        ],
+      },
+    },
+  });
+  subject.hass = {
+    states: {
+      'sensor.fixture_total': state('sensor.fixture_total', 4200, 'House Input', 'kWh', 'energy'),
+      'sensor.fixture_pool': state('sensor.fixture_pool', 1400, 'Pool', 'kWh', 'energy'),
+    },
+  };
+  await Promise.resolve(); await Promise.resolve();
+  assert.match(subject.shadowRoot.innerHTML, /No aligned archive history/);
+  assert.doesNotMatch(subject.shadowRoot.innerHTML, /30% of total/);
+  assert.doesNotMatch(subject.shadowRoot.innerHTML, />30 kWh</);
+});
+
+test('keeps independent feeders out of the selected total and percentage split', async () => {
+  const subject = card();
+  subject.setConfig({
+    type: 'custom:oriel-card',
+    entity_ids: { electricity: ['sensor.fixture_total'], water: [], fuel: [], power: [] },
+    archive_weekly_values: { electricity: [100] },
+    archive_weekly_recorded_days: { electricity: [7] },
+    source_breakdowns: {
+      electricity: {
+        open: true,
+        sources: [
+          { entity_id: 'sensor.fixture_house', label: 'House', relation: 'part_of_total', archive_weekly_values: [100], archive_weekly_recorded_days: [7] },
+          { entity_id: 'sensor.fixture_lodge', label: 'Lodge', relation: 'independent', archive_weekly_values: [200], archive_weekly_recorded_days: [7] },
+        ],
+      },
+    },
+  });
+  subject.hass = {
+    states: {
+      'sensor.fixture_total': state('sensor.fixture_total', 4200, 'House Input', 'kWh', 'energy'),
+      'sensor.fixture_house': state('sensor.fixture_house', 2200, 'House', 'kWh', 'energy'),
+      'sensor.fixture_lodge': state('sensor.fixture_lodge', 900, 'Lodge', 'kWh', 'energy'),
+    },
+  };
+  await Promise.resolve(); await Promise.resolve();
+  assert.match(subject.shadowRoot.innerHTML, /100% of total/);
+  assert.match(subject.shadowRoot.innerHTML, /Independent meter/);
+  assert.match(subject.shadowRoot.innerHTML, /200 kWh/);
+  assert.doesNotMatch(subject.shadowRoot.innerHTML, /200% of total/);
+});
+
+test('queries a configured dynamic breakdown source only after its dropdown is opened', async () => {
+  const subject = card();
+  const calls = [];
+  subject.setConfig({
+    type: 'custom:oriel-card',
+    history_weeks: 1,
+    statistics: { history: true, anchor: '2026-09-19T12:00:00.000Z', timezone: 'Europe/London' },
+    entity_ids: { electricity: ['sensor.fixture_total'], water: [], fuel: [], power: [] },
+    source_breakdowns: {
+      electricity: [
+        { entity_id: 'sensor.fixture_pool', label: 'Pool', relation: 'part_of_total' },
+      ],
+    },
+  });
+  subject.hass = {
+    states: {
+      'sensor.fixture_total': state('sensor.fixture_total', 4200, 'House Input', 'kWh', 'energy'),
+      'sensor.fixture_pool': state('sensor.fixture_pool', 1400, 'Pool', 'kWh', 'energy'),
+      'sensor.unapproved': state('sensor.unapproved', 999, 'Unapproved', 'kWh', 'energy'),
+    },
+    callWS: async (payload) => { calls.push(payload.entity_ids[0]); return { [payload.entity_ids[0]]: [] }; },
+  };
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  assert.deepEqual(calls, ['sensor.fixture_total']);
+  subject._breakdownOpen.set('electricity', true);
+  subject.render();
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  assert.deepEqual(calls.sort(), ['sensor.fixture_pool', 'sensor.fixture_total']);
+  assert.doesNotMatch(subject.shadowRoot.innerHTML, /Unapproved/);
+});

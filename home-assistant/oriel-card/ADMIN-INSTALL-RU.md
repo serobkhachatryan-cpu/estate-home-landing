@@ -50,7 +50,7 @@ cp /путь/к/oriel-card.js /config/www/oriel/oriel-card.js
 4. Введите URL:
 
    ```text
-   /local/oriel/oriel-card.js?v=6
+   /local/oriel/oriel-card.js?v=7
    ```
 
 5. Выберите **JavaScript module**.
@@ -152,6 +152,65 @@ cash, payment или фактическая оплата. Отсутствующ
 тестовой инсталляции, где этот источник не обязан быть текущим live-state;
 карточка при этом не придумывает для него актуальное значение.
 
+### Необязательная разбивка по измеренным источникам
+
+Под focus-week можно добавить раскрываемый список **Measured source
+breakdown**. Он нужен для реальных, заранее подтверждённых meter/feeder
+sources: например, отдельных фидеров House / Pool / Garage внутри одного
+House Input либо независимых water meters. Это не автоматический поиск
+«похожих» сенсоров и не попытка угадать помещения.
+
+```yaml
+source_breakdowns:
+  electricity:
+    title: "Where electricity was metered"
+    open: false
+    note: "Компоненты показываются только после подтверждения схемы счётчиков."
+    sources:
+      - entity_id: sensor.APPROVED_HOUSE_FEEDER_ENERGY
+        label: House
+        relation: part_of_total
+        archive_weekly_values: ["<latest_kwh>", "<previous_kwh>"]
+        archive_weekly_recorded_days: ["<latest_days>", "<previous_days>"]
+      - entity_id: sensor.APPROVED_POOL_FEEDER_ENERGY
+        label: Pool
+        relation: part_of_total
+        archive_weekly_values: ["<latest_kwh>", "<previous_kwh>"]
+        archive_weekly_recorded_days: ["<latest_days>", "<previous_days>"]
+  water:
+    title: "Independent water meters"
+    note: "Эти meters показаны отдельно и не складываются в один итог."
+    sources:
+      - entity_id: sensor.APPROVED_LODGE_WATER_METER
+        label: Lodge Water
+        relation: independent
+        archive_weekly_values: ["<latest_litres>", "<previous_litres>"]
+        archive_weekly_recorded_days: ["<latest_days>", "<previous_days>"]
+```
+
+`source_breakdowns` — отдельный явный allowlist: source ID уже согласован в
+этом блоке, поэтому его не нужно дублировать в `entity_ids`. Нельзя добавлять
+в него source «по названию», только после approval владельца и проверки
+физической топологии.
+
+Каждый `archive_weekly_values` в source breakdown обязан иметь ту же длину и
+тот же порядок недель, что и основной `archive_weekly_values` системы. Если
+добавлен `archive_week_starts`, каждый UK Monday должен совпадать с Monday
+основной строки на той же позиции. При несовпадении история показывается как
+`No aligned archive history`, а не как ноль.
+
+`relation: independent` (значение по умолчанию) никогда не суммируется с
+основным total. `relation: part_of_total` разрешает показать долю в процентах
+только если **все** компоненты за выбранную неделю имеют совпадающее число
+recorded days и их сумма сходится с total в допустимой погрешности округления.
+Карточка не распределяет tariff estimate / GBP / invoice / cash между
+источниками.
+
+Если private archive arrays не добавлены, раскрытие dropdown при
+`statistics: true` создаёт read-only Recorder request только для явно
+перечисленных sources (не более 16). Закрытый dropdown ничего дополнительно не
+запрашивает; весь каталог сенсоров не сканируется.
+
 ## Безопасный вариант для ограниченной аудитории
 
 **Не** добавляйте `show_catalog: true` на dashboard инвестора,
@@ -187,7 +246,7 @@ entity_ids:
 ## Обновление и откат
 
 **Обновление:** замените `/config/www/oriel/oriel-card.js`, увеличьте
-параметр версии в resource URL (например, с `?v=6` на `?v=7`) и обновите браузер.
+параметр версии в resource URL (например, с `?v=7` на `?v=8`) и обновите браузер.
 
 **Откат:** верните предыдущий JS-файл из Home Assistant backup или из
 проверенной версии, поменяйте URL на предыдущую версию и обновите браузер.
