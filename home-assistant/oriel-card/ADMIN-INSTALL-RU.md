@@ -50,7 +50,7 @@ cp /путь/к/oriel-card.js /config/www/oriel/oriel-card.js
 4. Введите URL:
 
    ```text
-   /local/oriel/oriel-card.js?v=5
+   /local/oriel/oriel-card.js?v=6
    ```
 
 5. Выберите **JavaScript module**.
@@ -187,7 +187,7 @@ entity_ids:
 ## Обновление и откат
 
 **Обновление:** замените `/config/www/oriel/oriel-card.js`, увеличьте
-параметр версии в resource URL (например, с `?v=5` на `?v=6`) и обновите браузер.
+параметр версии в resource URL (например, с `?v=6` на `?v=7`) и обновите браузер.
 
 **Откат:** верните предыдущий JS-файл из Home Assistant backup или из
 проверенной версии, поменяйте URL на предыдущую версию и обновите браузер.
