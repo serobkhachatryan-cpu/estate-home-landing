@@ -7,7 +7,7 @@ This is a read-only custom card for a standard Home Assistant dashboard. It is
 not a `panel_custom` page.
 
 1. Copy `oriel-card.js` to `/config/www/oriel/oriel-card.js`.
-2. Add `/local/oriel/oriel-card.js?v=4` as a JavaScript module resource in
+2. Add `/local/oriel/oriel-card.js?v=5` as a JavaScript module resource in
    **Settings → Dashboards → Resources**.
 3. Add a Manual card to any dashboard:
 
@@ -63,7 +63,10 @@ for every imported row. If it is omitted, `archive_anchor` and
 The card reproduces the Oriel weekly-ribbon layout: a chosen focus week, a
 scrollable Mon–Sun timeline, a yellow focus line and an explicit list of the
 approved measurement/cost sources. A cost is rendered only when a matching
-`archive_weekly_costs` value is supplied. A `Plan`, `Fact`, `Cash` or
+`archive_weekly_costs` value is supplied **for every displayed usage week**,
+with aligned `archive_weekly_cost_matching_days`, explicit `cost_entity_ids`
+and a non-empty source label. Otherwise the timeline stays in its native
+consumption unit and explicitly withholds the GBP estimate. A `Plan`, `Fact`, `Cash` or
 "efficient/inefficient" comparison is **not** fabricated from consumption.
 If a later approved financial source exists, add aligned currency values under
 `archive_weekly_plan_costs`; otherwise the card visibly says that no plan is
@@ -74,8 +77,10 @@ archive in a separate test instance where the historical source is not a live
 state today: it names the approved archived source but never invents a current
 value for it.
 
-The card reads only `hass.states` from the signed-in dashboard. Do not enable
-`inventory_mode: all_sensors` for an investor, guest or tenant: it exposes the
+The card reads only `hass.states` from the signed-in dashboard. Its weekly
+sources are allowlist-only: without exact `entity_ids` it displays no source,
+rather than discovering a similar-looking sensor automatically. Do not enable
+`show_catalog: true` for an investor, guest or tenant: it exposes the
 full sensor catalogue to that authenticated user. Use exact `entity_ids` for a
 limited audience.
 
