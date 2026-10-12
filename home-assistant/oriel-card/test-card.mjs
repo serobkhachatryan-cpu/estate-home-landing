@@ -50,3 +50,19 @@ test('does not query Recorder unless statistics are explicitly enabled', async (
   assert.equal(calls, 0);
   assert.match(subject.shadowRoot.innerHTML, /Weekly statistics are disabled/);
 });
+
+test('labels imported records as UK Monday–Sunday calendar weeks', async () => {
+  const subject = card();
+  subject.setConfig({
+    type: 'custom:oriel-card',
+    archive_anchor: '2026-09-19T12:00:00.000Z',
+    archive_timezone: 'Europe/London',
+    entity_ids: { electricity: ['sensor.fixture_energy'], water: [], fuel: [], power: [] },
+    archive_weekly_values: { electricity: [312.9, 824.5] },
+  });
+  subject.hass = { states: { 'sensor.fixture_energy': state('sensor.fixture_energy', 4200, 'Approved meter', 'kWh', 'energy') } };
+  await Promise.resolve(); await Promise.resolve();
+  assert.match(subject.shadowRoot.innerHTML, /Imported weekly record · Mon–Sun/);
+  assert.match(subject.shadowRoot.innerHTML, /14–20 Sept 2026/);
+  assert.match(subject.shadowRoot.innerHTML, /7–13 Sept 2026/);
+});
