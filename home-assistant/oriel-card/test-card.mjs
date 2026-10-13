@@ -9,7 +9,14 @@ function card() {
   const registered = new Map();
   class Element {
     attachShadow() {
-      const shadow = { innerHTML: '', querySelectorAll: () => [], querySelector: () => null };
+      const listeners = {};
+      const shadow = {
+        innerHTML: '',
+        querySelectorAll: () => [],
+        querySelector: () => null,
+        addEventListener: (type, listener) => { listeners[type] = listener; },
+        listeners,
+      };
       this.shadowRoot = shadow;
       return shadow;
     }
@@ -73,6 +80,34 @@ test('renders each system selector as a non-submitting navigation button', async
   for (const system of ['electricity', 'water', 'fuel', 'power']) {
     assert.match(subject.shadowRoot.innerHTML, new RegExp(`<button class="tab" type="button" data-system="${system}"`));
   }
+});
+
+test('delegates system navigation from the persistent shadow root', async () => {
+  const subject = card();
+  subject.setConfig({
+    type: 'custom:oriel-card',
+    entity_ids: { electricity: ['sensor.fixture_energy'], water: ['sensor.fixture_water'], fuel: [], power: [] },
+    archive_weekly_values: { electricity: [100], water: [24] },
+    archive_weekly_recorded_days: { electricity: [7], water: [7] },
+  });
+  subject.hass = {
+    states: {
+      'sensor.fixture_energy': state('sensor.fixture_energy', 4200, 'Approved meter', 'kWh', 'energy'),
+      'sensor.fixture_water': state('sensor.fixture_water', 240, 'Approved water meter', 'L', 'water'),
+    },
+  };
+  await Promise.resolve(); await Promise.resolve();
+  let prevented = false;
+  let stopped = false;
+  subject.shadowRoot.listeners.click({
+    composedPath: () => [{ dataset: { system: 'water' } }],
+    preventDefault: () => { prevented = true; },
+    stopPropagation: () => { stopped = true; },
+  });
+  assert.equal(subject._selected, 'water');
+  assert.equal(prevented, true);
+  assert.equal(stopped, true);
+  assert.match(subject.shadowRoot.innerHTML, /Water weekly record/);
 });
 
 test('does not request another ribbon-centre animation for an ordinary Home Assistant state refresh', async () => {

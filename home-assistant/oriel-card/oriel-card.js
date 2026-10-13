@@ -200,6 +200,23 @@ class OrielCard extends HTMLElement {
     // only centre a week after an intentional Oriel navigation action.
     this._timelineScrollTop = 0;
     this._pendingTimelineCenter = true;
+    // Keep system navigation on the persistent shadow root. Home Assistant
+    // may rebuild a card's contents while it refreshes its own view; a
+    // delegated listener survives those innerHTML replacements.
+    this._onSystemActivate = (event) => {
+      const button = typeof event.composedPath === "function"
+        ? event.composedPath().find((candidate) => candidate && candidate.dataset && candidate.dataset.system)
+        : null;
+      const systemId = button && button.dataset ? button.dataset.system : "";
+      if (!systemId || !this.systems().some((system) => system.id === systemId)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this._selected = systemId;
+      this._selectedWeek = 0;
+      this._pendingTimelineCenter = true;
+      this.render();
+    };
+    if (typeof this.shadowRoot.addEventListener === "function") this.shadowRoot.addEventListener("click", this._onSystemActivate);
   }
 
   setConfig(config) {
@@ -347,17 +364,6 @@ class OrielCard extends HTMLElement {
   }
 
   afterRender() {
-    this.shadowRoot.querySelectorAll("[data-system]").forEach((button) => button.addEventListener("click", (event) => {
-      // Home Assistant can place a dashboard card inside a form-like editor
-      // surface. Keep system switching local to Oriel rather than allowing a
-      // parent handler to treat this navigation control as a submit/tap.
-      event.preventDefault();
-      event.stopPropagation();
-      this._selected = button.dataset.system;
-      this._selectedWeek = 0;
-      this._pendingTimelineCenter = true;
-      this.render();
-    }));
     this.shadowRoot.querySelectorAll("[data-week]").forEach((button) => button.addEventListener("click", () => {
       this._selectedWeek = Number.parseInt(button.dataset.week, 10) || 0;
       this._pendingTimelineCenter = true;
