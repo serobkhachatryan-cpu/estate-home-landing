@@ -65,6 +65,16 @@ test('does not infer an approved source from the complete sensor state map', asy
   assert.doesNotMatch(subject.shadowRoot.innerHTML, /Unapproved meter/);
 });
 
+test('renders each system selector as a non-submitting navigation button', async () => {
+  const subject = card();
+  subject.setConfig({ type: 'custom:oriel-card', entity_ids: { electricity: ['sensor.fixture_energy'], water: [], fuel: [], power: [] } });
+  subject.hass = { states: { 'sensor.fixture_energy': state('sensor.fixture_energy', 4200, 'Approved meter', 'kWh', 'energy') } };
+  await Promise.resolve(); await Promise.resolve();
+  for (const system of ['electricity', 'water', 'fuel', 'power']) {
+    assert.match(subject.shadowRoot.innerHTML, new RegExp(`<button class="tab" type="button" data-system="${system}"`));
+  }
+});
+
 test('does not request another ribbon-centre animation for an ordinary Home Assistant state refresh', async () => {
   const subject = card();
   subject.setConfig({ type: 'custom:oriel-card', entity_ids: { electricity: ['sensor.fixture_energy'], water: [], fuel: [], power: [] } });

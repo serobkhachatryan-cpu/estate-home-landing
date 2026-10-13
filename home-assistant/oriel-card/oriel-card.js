@@ -347,7 +347,12 @@ class OrielCard extends HTMLElement {
   }
 
   afterRender() {
-    this.shadowRoot.querySelectorAll("[data-system]").forEach((button) => button.addEventListener("click", () => {
+    this.shadowRoot.querySelectorAll("[data-system]").forEach((button) => button.addEventListener("click", (event) => {
+      // Home Assistant can place a dashboard card inside a form-like editor
+      // surface. Keep system switching local to Oriel rather than allowing a
+      // parent handler to treat this navigation control as a submit/tap.
+      event.preventDefault();
+      event.stopPropagation();
       this._selected = button.dataset.system;
       this._selectedWeek = 0;
       this._pendingTimelineCenter = true;
@@ -532,7 +537,7 @@ class OrielCard extends HTMLElement {
       </style>
       <article class="card">
         <header><div><div class="brand">Oriel</div><div class="sub">Aldworth · recorded Home Assistant history</div></div><div class="state"><i class="dot"></i>read only</div></header>
-        <nav class="tabs" aria-label="Oriel systems">${systems.map((item) => `<button class="tab" data-system="${esc(item.id)}" aria-selected="${item.id === system.id}">${esc(item.icon)} ${esc(item.label)}</button>`).join("")}</nav>
+        <nav class="tabs" aria-label="Oriel systems">${systems.map((item) => `<button class="tab" type="button" data-system="${esc(item.id)}" aria-selected="${item.id === system.id}">${esc(item.icon)} ${esc(item.label)}</button>`).join("")}</nav>
         ${weeks.length ? `
           <section class="overview">
             <p class="eyebrow">${weeks.length} week${weeks.length === 1 ? "" : "s"} to focus · ${esc(oldest.range)} → ${esc(newest.range)}</p>
