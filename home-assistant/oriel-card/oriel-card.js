@@ -216,7 +216,9 @@ class OrielCard extends HTMLElement {
       this._pendingTimelineCenter = true;
       this.render();
     };
-    if (typeof this.shadowRoot.addEventListener === "function") this.shadowRoot.addEventListener("click", this._onSystemActivate);
+    // Capture the click inside the card before the Home Assistant dashboard
+    // shell can interpret it as a dashboard/editor gesture.
+    if (typeof this.shadowRoot.addEventListener === "function") this.shadowRoot.addEventListener("click", this._onSystemActivate, { capture: true });
   }
 
   setConfig(config) {

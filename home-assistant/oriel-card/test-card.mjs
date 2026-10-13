@@ -14,7 +14,7 @@ function card() {
         innerHTML: '',
         querySelectorAll: () => [],
         querySelector: () => null,
-        addEventListener: (type, listener) => { listeners[type] = listener; },
+        addEventListener: (type, listener, options) => { listeners[type] = { listener, options }; },
         listeners,
       };
       this.shadowRoot = shadow;
@@ -99,7 +99,8 @@ test('delegates system navigation from the persistent shadow root', async () => 
   await Promise.resolve(); await Promise.resolve();
   let prevented = false;
   let stopped = false;
-  subject.shadowRoot.listeners.click({
+  assert.equal(subject.shadowRoot.listeners.click.options.capture, true);
+  subject.shadowRoot.listeners.click.listener({
     composedPath: () => [{ dataset: { system: 'water' } }],
     preventDefault: () => { prevented = true; },
     stopPropagation: () => { stopped = true; },
