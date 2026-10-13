@@ -361,7 +361,14 @@ class OrielCard extends HTMLElement {
     const details = this.shadowRoot.querySelector("[data-catalog]");
     if (details) details.addEventListener("toggle", () => { this._expanded = details.open; });
     const focused = this.shadowRoot.querySelector("[data-focus-week]");
-    if (focused && typeof focused.scrollIntoView === "function") Promise.resolve().then(() => focused.scrollIntoView({ block: "center", behavior: "auto" }));
+    const timeline = this.shadowRoot.querySelector(".timeline");
+    // Keep the selected week centred within the ribbon without moving the
+    // enclosing Lovelace dashboard. `scrollIntoView()` bubbles through every
+    // scrollable ancestor, which previously hid the system tabs above the card.
+    if (focused && timeline) Promise.resolve().then(() => {
+      const nextTop = focused.offsetTop - timeline.offsetTop - timeline.clientHeight / 2 + focused.offsetHeight / 2;
+      timeline.scrollTop = Math.max(0, nextTop);
+    });
   }
 
   render() {
