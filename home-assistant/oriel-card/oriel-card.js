@@ -35,16 +35,27 @@ const rules = {
 
 const DEFAULT_HISTORY_WEEKS = 6;
 const MAX_BREAKDOWN_SOURCES = 16;
+// Live tariff calculation is deliberately narrower than the administrator
+// catalogue. A normal three-phase supply needs three monetary sources; a
+// larger set should be reviewed and reduced rather than silently sampled.
+const MAX_LIVE_TARIFF_SOURCES = 8;
 const DAY_MS = 86400000;
+const DEFAULT_TIME_ZONE = "Europe/London";
+const HISTORY_REFRESH_MS = 60 * 1000;
 const esc = (value) => String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 const attrs = (entity) => entity && entity.attributes && typeof entity.attributes === "object" ? entity.attributes : {};
-const name = (entity) => attrs(entity).friendly_name || entity.entity_id.replace(/^.*?\./, "").replace(/_/g, " ");
+const entityName = (entity) => attrs(entity).friendly_name || entity.entity_id.replace(/^.*?\./, "").replace(/_/g, " ");
 const available = (entity) => !["", "unknown", "unavailable", "none"].includes(String(entity && entity.state || "").toLowerCase());
 const value = (entity) => Number.parseFloat(String(entity && entity.state || ""));
 const finite = (raw) => typeof raw === "number" && Number.isFinite(raw);
 const numeric = (raw) => {
   const parsed = typeof raw === "number" ? raw : Number.parseFloat(String(raw));
   return Number.isFinite(parsed) ? parsed : null;
+};
+const hasOwn = (object, key) => Boolean(object && Object.prototype.hasOwnProperty.call(object, key));
+const validTimeZone = (timeZone) => {
+  if (typeof timeZone !== "string" || !timeZone.trim()) return false;
+  try { new Intl.DateTimeFormat("en-GB", { timeZone }); return true; } catch { return false; }
 };
 const sum = (items) => items.reduce((total, item) => total + (finite(item) ? item : 0), 0);
 const count = (items) => items.filter(finite).length;
@@ -69,10 +80,18 @@ const categoryId = (id) => {
 };
 const category = (id) => (INVENTORY_SYSTEMS.find((system) => system.id === categoryId(id)) || INVENTORY_SYSTEMS.at(-1)).label;
 const timestamp = (state) => {
-  const parsed = Date.parse(state && (state.last_updated || state.last_changed || state.lu || ""));
+  const raw = state && (state.last_updated ?? state.last_changed ?? state.lu ?? state.lc);
+  const numericTimestamp = typeof raw === "number" ? raw : /^\d+(?:\.\d+)?$/.test(String(raw || "")) ? Number(raw) : null;
+  // Home Assistant's `minimal_response` history payload is compressed: `lu`
+  // is an epoch in seconds, not an ISO string. Do not feed it to Date.parse.
+  if (Number.isFinite(numericTimestamp)) return numericTimestamp > 100000000000 ? numericTimestamp : numericTimestamp * 1000;
+  const parsed = Date.parse(String(raw || ""));
   return Number.isFinite(parsed) ? parsed : null;
 };
-const cumulative = (entity) => String(attrs(entity).device_class || "").toLowerCase() === "energy" || /(?:total_l|_energy$|_energy_)/i.test(entity.entity_id);
+const cumulative = (entity) => {
+  const stateClass = String(attrs(entity).state_class || "").toLowerCase();
+  return stateClass === "total_increasing" || String(attrs(entity).device_class || "").toLowerCase() === "energy" || /(?:total_l|_energy$|_energy_)/i.test(entity.entity_id);
+};
 const monday = (date) => {
   const result = new Date(date); result.setHours(0, 0, 0, 0);
   result.setDate(result.getDate() - (result.getDay() === 0 ? 6 : result.getDay() - 1));
@@ -98,11 +117,16 @@ const zonedMonday = (date, timeZone) => {
   utcDate.setUTCDate(utcDate.getUTCDate() - (utcDate.getUTCDay() === 0 ? 6 : utcDate.getUTCDay() - 1));
   return zonedMidnight(utcDate.getUTCFullYear(), utcDate.getUTCMonth() + 1, utcDate.getUTCDate(), timeZone);
 };
-const weekRange = (index, anchor = new Date(), timeZone = null) => {
+const addZonedDays = (date, days, timeZone) => {
+  const parts = zonedParts(date, timeZone);
+  const calendar = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  calendar.setUTCDate(calendar.getUTCDate() + days);
+  return zonedMidnight(calendar.getUTCFullYear(), calendar.getUTCMonth() + 1, calendar.getUTCDate(), timeZone);
+};
+const weekRange = (index, anchor = new Date(), timeZone = DEFAULT_TIME_ZONE) => {
   if (timeZone) {
-    const endDate = zonedMonday(anchor, timeZone); endDate.setUTCDate(endDate.getUTCDate() + 7 - index * 7);
-    const start = new Date(endDate); start.setUTCDate(start.getUTCDate() - 7);
-    return { start, end: endDate };
+    const start = addZonedDays(zonedMonday(anchor, timeZone), -index * 7, timeZone);
+    return { start, end: addZonedDays(start, 7, timeZone) };
   }
   const end = new Date(monday(anchor)); end.setDate(end.getDate() + 7 - index * 7);
   const start = new Date(end); start.setDate(start.getDate() - 7);
@@ -144,25 +168,69 @@ const weekDetails = (index, anchor, timeZone) => {
 const configuredWeekDetails = (startIso, index) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(startIso || ""))) return null;
   const start = new Date(`${startIso}T00:00:00.000Z`);
-  if (!Number.isFinite(start.getTime()) || start.getUTCDay() !== 1) return null;
+  // Date parses e.g. 2026-02-30 by rolling it into March. Imported rows
+  // must be real ISO calendar Mondays, not merely parseable strings.
+  if (!Number.isFinite(start.getTime()) || isoDate(start) !== startIso || start.getUTCDay() !== 1) return null;
   return describeWeek(start, index);
 };
-const historyPoints = (response, entityId) => Array.isArray(response) ? (Array.isArray(response[0]) ? response[0] : response) : Array.isArray(response && response[entityId]) ? response[entityId] : [];
-const historyWeek = (range, history, entity) => {
-  const points = history.map((item) => ({ at: timestamp(item), value: Number.parseFloat(item && item.state) }))
-    .filter((item) => item.at !== null && Number.isFinite(item.value) && item.at >= range.start.getTime() && item.at < range.end.getTime())
-    .sort((a, b) => a.at - b.at);
-  if (!points.length) return null;
-  return cumulative(entity) && points.length > 1 ? Math.max(0, points.at(-1).value - points[0].value) : points.at(-1).value;
+const alignedArchiveStarts = (starts, count) => {
+  if (!Array.isArray(starts) || starts.length !== count || !count) return false;
+  const details = starts.map((start, index) => configuredWeekDetails(start, index));
+  return details.every(Boolean) && details.every((week, index) => index === 0 || week.start.getTime() === details[index - 1].start.getTime() - 7 * DAY_MS);
 };
-const sourcePriority = (system, entity) => {
-  let score = available(entity) ? 100 : 0;
-  if (system.id === "electricity" && attrs(entity).device_class === "energy") score += 80;
-  if (system.id === "water" && /(?:total_l|total|volume)/i.test(entity.entity_id)) score += 80;
-  if (system.id === "fuel" && /(?:volume|level)/i.test(entity.entity_id)) score += 60;
-  if (system.id === "power" && /battery/i.test(entity.entity_id)) score += 60;
-  if (money(entity)) score -= 30;
-  return score;
+const historyPoints = (response, entityId) => Array.isArray(response) ? (Array.isArray(response[0]) ? response[0] : response) : Array.isArray(response && response[entityId]) ? response[entityId] : [];
+const historyWeekReading = (range, history, entity, terminalLimit = range.end.getTime()) => {
+  let lastValue = null;
+  const points = history.map((item) => {
+    const rawValue = item && (item.state ?? item.s);
+    if (rawValue !== undefined && rawValue !== null && rawValue !== "") {
+      const parsed = Number.parseFloat(rawValue);
+      lastValue = Number.isFinite(parsed) ? parsed : null;
+    }
+    return { at: timestamp(item), value: lastValue };
+  }).filter((item) => item.at !== null && Number.isFinite(item.value)).sort((a, b) => a.at - b.at);
+  // A weekly "use" can only be calculated from a cumulative counter. A
+  // level, battery percentage or a single cumulative sample is a snapshot,
+  // not consumption, so it is intentionally withheld from the ribbon.
+  if (!cumulative(entity) || points.length < 2) return null;
+  // Recorder may give us the most recent state immediately before the
+  // requested week rather than a synthetic point exactly at UK midnight.
+  // That is the valid baseline. Do not substitute the first in-week value:
+  // it would understate consumption whenever the counter changed before it.
+  const baseline = points.filter((item) => item.at <= range.start.getTime()).at(-1);
+  const terminal = points.filter((item) => item.at > range.start.getTime() && item.at < range.end.getTime() && item.at <= terminalLimit).at(-1);
+  if (!baseline || !terminal) return null;
+  // A positive final-minus-initial number is not sufficient proof that a
+  // counter did not reset: it could have reset and subsequently climbed past
+  // the original value. For a current tariff estimate, reject *any* observed
+  // backwards transition between the UK-week baseline and terminal sample.
+  let previousValue = baseline.value;
+  for (const point of points.filter((item) => item.at > baseline.at && item.at <= terminal.at)) {
+    if (point.value < previousValue) return null;
+    previousValue = point.value;
+  }
+  const delta = terminal.value - baseline.value;
+  // A reset or replacement makes the difference ambiguous. Never turn it
+  // into a synthetic zero: wait for validated data instead.
+  return delta >= 0 ? { value: delta, terminalAt: terminal.at } : null;
+};
+const historyWeek = (range, history, entity) => {
+  const reading = historyWeekReading(range, history, entity);
+  return reading ? reading.value : null;
+};
+const tariffEstimateWeek = (range, components) => {
+  // Work only from Recorder history. In particular, never add the current
+  // `hass.states` values of monetary sensors: those values can be lifetime,
+  // daily, resettable, or otherwise incomparable counters.
+  const initial = components.map(({ entity, history }) => historyWeekReading(range, history, entity));
+  if (!initial.length || initial.some((reading) => !reading)) return null;
+  // A monetary component can update at a different instant from its peers.
+  // Recalculate every component at the latest timestamp they all share so
+  // the displayed sum has a single, explicit Recorder coverage boundary.
+  const sharedTerminal = Math.min(...initial.map((reading) => reading.terminalAt));
+  const aligned = components.map(({ entity, history }) => historyWeekReading(range, history, entity, sharedTerminal));
+  if (aligned.some((reading) => !reading)) return null;
+  return { value: sum(aligned.map((reading) => reading.value)), terminalAt: sharedTerminal, sourceCount: aligned.length };
 };
 const safeWeekCount = (raw) => {
   const parsed = Number.parseInt(String(raw), 10);
@@ -190,11 +258,21 @@ class OrielCard extends HTMLElement {
     this._selectedWeek = 0;
     this._expanded = false;
     this._breakdownOpen = new Map();
+    this._selectedArchiveSource = null;
+    this._archiveFocusPending = false;
     this._hass = null;
     this._config = {};
     this._history = new Map();
     this._historyLoading = new Set();
+    this._historyErrors = new Map();
+    this._historyFetchedAt = new Map();
+    this._historyEpoch = 0;
     this._renderQueued = false;
+    // Home Assistant can push state updates frequently. Preserve the reader's
+    // position in the weekly ribbon between those ordinary re-renders, and
+    // only centre a week after an intentional Oriel navigation action.
+    this._timelineScrollTop = 0;
+    this._pendingTimelineCenter = true;
   }
 
   setConfig(config) {
@@ -203,8 +281,15 @@ class OrielCard extends HTMLElement {
     // A card editor can replace an archive anchor or timezone for the same
     // entity. Recorder samples from the preceding configuration must not be
     // reused for that new time range.
+    this._historyEpoch += 1;
     this._history.clear();
     this._historyLoading.clear();
+    this._historyErrors.clear();
+    this._historyFetchedAt.clear();
+    this._selectedArchiveSource = null;
+    this._archiveFocusPending = false;
+    this._timelineScrollTop = 0;
+    this._pendingTimelineCenter = true;
     this.queueRender();
   }
 
@@ -214,10 +299,11 @@ class OrielCard extends HTMLElement {
   queueRender() {
     if (this._renderQueued) return;
     this._renderQueued = true;
-    Promise.resolve().then(() => { this._renderQueued = false; this.render(); });
+    void Promise.resolve().then(() => { this._renderQueued = false; this.render(); })
+      .catch((error) => console.error("Oriel card render failed", error));
   }
 
-  getCardSize() { return this._expanded || [...this._breakdownOpen.values()].some(Boolean) ? 24 : 15; }
+  getCardSize() { return this._expanded || [...this._breakdownOpen.values()].some(Boolean) || this._selectedArchiveSource ? 24 : 15; }
 
   systems() {
     const custom = Array.isArray(this._config.sensor_groups) ? this._config.sensor_groups
@@ -226,17 +312,72 @@ class OrielCard extends HTMLElement {
     return custom.length ? custom : UTILITY_SYSTEMS;
   }
 
+  selectSystem(systemId) {
+    if (!this.systems().some((system) => system.id === systemId)) return false;
+    this._selected = systemId;
+    this._selectedWeek = 0;
+    this._selectedArchiveSource = null;
+    this._archiveFocusPending = false;
+    this._pendingTimelineCenter = true;
+    // Let the native click finish before replacing the button that received
+    // it. Rebuilding the shadow DOM during a Home Assistant gesture leaves
+    // the card looking permanently busy and prevents the next tab switch.
+    this.queueRender();
+    return true;
+  }
+
+  openEntity(entityId) {
+    const id = String(entityId || "").trim();
+    // Entity navigation is deliberately limited to sensor entities that are
+    // currently present in the signed-in Home Assistant dashboard. Archive
+    // labels without a live HA entity remain descriptive rather than linking
+    // to a broken or invented destination.
+    if (!/^sensor\./i.test(id) || !this._hass || !this._hass.states || !this._hass.states[id]) return false;
+    this.dispatchEvent(new CustomEvent("hass-more-info", {
+      bubbles: true,
+      composed: true,
+      detail: { entityId: id },
+    }));
+    return true;
+  }
+
+  openArchiveSource(entityId) {
+    const id = String(entityId || "").trim();
+    if (!/^sensor\./i.test(id)) return false;
+    this._archiveFocusPending = this._selectedArchiveSource !== id;
+    this._selectedArchiveSource = id;
+    this.queueRender();
+    return true;
+  }
+
+  closeArchiveSource() {
+    if (!this._selectedArchiveSource) return;
+    this._selectedArchiveSource = null;
+    this._archiveFocusPending = false;
+    this.queueRender();
+  }
+
+  sourceIds(system, key = "entity_ids") {
+    const explicit = key === "entity_ids" && Array.isArray(system.entity_ids) ? system.entity_ids : explicitIds(this._config, key, system.id);
+    if (!Array.isArray(explicit)) return [];
+    const seen = new Set();
+    return explicit.reduce((ids, raw) => {
+      const id = String(raw || "").trim();
+      if (!/^sensor\./i.test(id) || seen.has(id)) return ids;
+      seen.add(id);
+      ids.push(id);
+      return ids;
+    }, []);
+  }
+
   sourceList(system, key = "entity_ids") {
     const stateMap = this._hass && this._hass.states || {};
-    const explicit = key === "entity_ids" && Array.isArray(system.entity_ids) ? system.entity_ids : explicitIds(this._config, key, system.id);
     // This card is intentionally allowlist-only. Regex discovery belongs only
     // in the administrator catalogue (`show_catalog: true`), never in a
-    // viewer-facing weekly ribbon.
-    if (!Array.isArray(explicit)) return [];
-    return Object.values(stateMap).filter((entity) => {
-      if (!/^sensor\./i.test(entity.entity_id)) return false;
-      return explicit.includes(entity.entity_id);
-    }).sort((a, b) => sourcePriority(system, b) - sourcePriority(system, a) || name(a).localeCompare(name(b)));
+    // viewer-facing weekly ribbon. Preserve configuration order: the first
+    // approved measurement is the primary weekly source and must never change
+    // because a secondary feeder happens to be available.
+    return this.sourceIds(system, key).map((id) => stateMap[id]).filter(Boolean);
   }
 
   statisticsEnabled() {
@@ -244,38 +385,70 @@ class OrielCard extends HTMLElement {
     return setting === true || Boolean(setting && typeof setting === "object" && setting.history === true);
   }
 
+  costHistoryEnabled() {
+    // Cost history is opt-in even when ordinary meter history is enabled.
+    // This makes the extra Recorder reads and the distinction from an invoice
+    // visible in the card configuration rather than implicit in cost labels.
+    const setting = this._config.statistics;
+    return Boolean(setting && typeof setting === "object" && setting.history === true && setting.cost_history === true);
+  }
+
   statisticsAnchor() {
     const configured = this._config.statistics && typeof this._config.statistics === "object" ? this._config.statistics.anchor : null;
-    const parsed = configured ? new Date(configured) : null;
-    return parsed && Number.isFinite(parsed.getTime()) ? parsed : new Date();
+    if (configured === null || configured === undefined || configured === "") return new Date();
+    const parsed = new Date(configured);
+    return Number.isFinite(parsed.getTime()) ? parsed : null;
   }
 
   statisticsTimeZone() {
     const configured = this._config.statistics && typeof this._config.statistics === "object" ? this._config.statistics.timezone : null;
-    try { if (configured) new Intl.DateTimeFormat("en-GB", { timeZone: configured }); } catch { return null; }
-    return configured || null;
+    return validTimeZone(configured) ? configured : DEFAULT_TIME_ZONE;
   }
 
   archiveAnchor() {
-    const parsed = this._config.archive_anchor ? new Date(this._config.archive_anchor) : null;
-    return parsed && Number.isFinite(parsed.getTime()) ? parsed : this.statisticsAnchor();
+    if (!hasOwn(this._config, "archive_anchor") || this._config.archive_anchor === "") return this.statisticsAnchor();
+    const parsed = new Date(this._config.archive_anchor);
+    return Number.isFinite(parsed.getTime()) ? parsed : null;
   }
 
   archiveTimeZone() {
     const configured = this._config.archive_timezone;
-    try { if (configured) new Intl.DateTimeFormat("en-GB", { timeZone: configured }); } catch { return this.statisticsTimeZone() || "Europe/London"; }
-    return configured || this.statisticsTimeZone() || "Europe/London";
+    return validTimeZone(configured) ? configured : this.statisticsTimeZone();
   }
 
   requestHistory(entity, weeks) {
-    if (!this.statisticsEnabled() || !entity || !this._hass || this._history.has(entity.entity_id) || this._historyLoading.has(entity.entity_id) || typeof this._hass.callWS !== "function") return;
+    const fetchedAt = entity && this._historyFetchedAt.get(entity.entity_id);
+    const cacheFresh = Boolean(fetchedAt && Date.now() - fetchedAt < HISTORY_REFRESH_MS);
+    if (!this.statisticsEnabled() || !entity || !this._hass || cacheFresh || this._historyLoading.has(entity.entity_id) || typeof this._hass.callWS !== "function") return;
     const anchor = this.statisticsAnchor();
-    const oldest = weekRange(weeks - 1, anchor, this.statisticsTimeZone()).start;
+    if (!anchor) {
+      this._historyErrors.set(entity.entity_id, "statistics.anchor is invalid; Recorder history was not requested.");
+      return;
+    }
+    // Pull one extra UK week so the oldest displayed week has an explicit
+    // pre-boundary cumulative baseline. The ribbon itself still displays only
+    // `weeks` rows.
+    const oldest = weekRange(weeks, anchor, this.statisticsTimeZone()).start;
+    const epoch = this._historyEpoch;
     this._historyLoading.add(entity.entity_id);
-    this._hass.callWS({ type: "history/history_during_period", start_time: oldest.toISOString(), end_time: anchor.toISOString(), entity_ids: [entity.entity_id], minimal_response: true, no_attributes: true })
-      .then((response) => this._history.set(entity.entity_id, historyPoints(response, entity.entity_id)))
-      .catch(() => this._history.set(entity.entity_id, []))
-      .finally(() => { this._historyLoading.delete(entity.entity_id); this.render(); });
+    Promise.resolve().then(() => this._hass.callWS({ type: "history/history_during_period", start_time: oldest.toISOString(), end_time: anchor.toISOString(), entity_ids: [entity.entity_id], minimal_response: true, no_attributes: true }))
+      .then((response) => {
+        if (epoch !== this._historyEpoch) return;
+        this._history.set(entity.entity_id, historyPoints(response, entity.entity_id));
+        this._historyErrors.delete(entity.entity_id);
+        this._historyFetchedAt.set(entity.entity_id, Date.now());
+      })
+      .catch(() => {
+        if (epoch !== this._historyEpoch) return;
+        this._history.set(entity.entity_id, []);
+        this._historyErrors.set(entity.entity_id, "Recorder history is unavailable to this signed-in user.");
+        this._historyFetchedAt.set(entity.entity_id, Date.now());
+      })
+      .finally(() => {
+        if (epoch !== this._historyEpoch) return;
+        this._historyLoading.delete(entity.entity_id);
+        this.render();
+      });
   }
 
   archiveValues(key, systemId) {
@@ -325,7 +498,7 @@ class OrielCard extends HTMLElement {
       rows.push({
         entityId,
         entity,
-        label: typeof raw.label === "string" && raw.label.trim() ? raw.label.trim() : entity ? name(entity) : entityId,
+        label: typeof raw.label === "string" && raw.label.trim() ? raw.label.trim() : entity ? entityName(entity) : entityId,
         role: typeof raw.role === "string" && raw.role.trim() ? raw.role.trim() : raw.relation === "part_of_total" ? "Part of selected total" : "Independent meter",
         relation: raw.relation === "part_of_total" ? "part_of_total" : "independent",
         unit,
@@ -340,38 +513,96 @@ class OrielCard extends HTMLElement {
   }
 
   afterRender() {
-    this.shadowRoot.querySelectorAll("[data-system]").forEach((button) => button.addEventListener("click", () => {
-      this._selected = button.dataset.system;
-      this._selectedWeek = 0;
-      this.render();
+    this.shadowRoot.querySelectorAll("[data-system]").forEach((button) => button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.selectSystem(button.dataset.system || "");
     }));
+    this.shadowRoot.querySelectorAll("[data-entity]").forEach((button) => button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.openEntity(button.dataset.entity || "");
+    }));
+    this.shadowRoot.querySelectorAll("[data-archive-entity]").forEach((button) => button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.openArchiveSource(button.dataset.archiveEntity || "");
+    }));
+    this.shadowRoot.querySelectorAll("[data-close-archive]").forEach((button) => button.addEventListener("click", () => this.closeArchiveSource()));
+    const archiveDialog = this.shadowRoot.querySelector("[data-archive-dialog]");
+    if (archiveDialog) archiveDialog.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.closeArchiveSource();
+      }
+    });
+    const archiveClose = this.shadowRoot.querySelector(".archive-close");
+    if (archiveClose && this._archiveFocusPending && typeof archiveClose.focus === "function") {
+      this._archiveFocusPending = false;
+      void Promise.resolve().then(() => archiveClose.focus())
+        .catch((error) => console.warn("Oriel card could not focus the archive detail", error));
+    }
     this.shadowRoot.querySelectorAll("[data-week]").forEach((button) => button.addEventListener("click", () => {
       this._selectedWeek = Number.parseInt(button.dataset.week, 10) || 0;
+      this._pendingTimelineCenter = true;
       this.render();
     }));
     this.shadowRoot.querySelectorAll("[data-jump]").forEach((button) => button.addEventListener("click", () => {
       this._selectedWeek = button.dataset.jump === "oldest" ? Number.parseInt(button.dataset.oldest, 10) || 0 : 0;
+      this._pendingTimelineCenter = true;
       this.render();
     }));
     const breakdown = this.shadowRoot.querySelector("[data-breakdown]");
-    if (breakdown) breakdown.addEventListener("toggle", () => {
-      this._breakdownOpen.set(breakdown.dataset.breakdown || this._selected, breakdown.open);
-      if (breakdown.open) this.render();
-    });
+    if (breakdown) {
+      const breakdownId = breakdown.dataset.breakdown || this._selected;
+      // Browsers emit a `toggle` event for an initially-open <details> that
+      // was just inserted with innerHTML. Record that initial state before
+      // subscribing so it cannot recursively rebuild the whole card.
+      if (!this._breakdownOpen.has(breakdownId)) this._breakdownOpen.set(breakdownId, breakdown.open);
+      breakdown.addEventListener("toggle", () => {
+        const previous = this._breakdownOpen.get(breakdownId);
+        if (previous === breakdown.open) return;
+        this._breakdownOpen.set(breakdownId, breakdown.open);
+        // Opening may require read-only history for configured breakdown
+        // sources. Closing already changes natively and needs no rerender.
+        if (breakdown.open) this.queueRender();
+      });
+    }
     const details = this.shadowRoot.querySelector("[data-catalog]");
     if (details) details.addEventListener("toggle", () => { this._expanded = details.open; });
     const focused = this.shadowRoot.querySelector("[data-focus-week]");
-    if (focused && typeof focused.scrollIntoView === "function") Promise.resolve().then(() => focused.scrollIntoView({ block: "center", behavior: "auto" }));
+    const timeline = this.shadowRoot.querySelector(".timeline");
+    if (!timeline) return;
+    timeline.addEventListener("scroll", () => { this._timelineScrollTop = timeline.scrollTop; }, { passive: true });
+    // Keep the selected week centred only after an explicit card action.
+    // Re-centring after every live HA state refresh made the ribbon visibly
+    // jump: its DOM is deliberately rebuilt to keep state rendering simple.
+    if (focused && this._pendingTimelineCenter) {
+      const nextTop = focused.offsetTop - timeline.offsetTop - timeline.clientHeight / 2 + focused.offsetHeight / 2;
+      timeline.scrollTop = Math.max(0, nextTop);
+      this._timelineScrollTop = timeline.scrollTop;
+      this._pendingTimelineCenter = false;
+    } else {
+      timeline.scrollTop = this._timelineScrollTop;
+    }
   }
 
   render() {
+    const previousTimeline = this.shadowRoot.querySelector(".timeline");
+    if (previousTimeline) this._timelineScrollTop = previousTimeline.scrollTop;
+    const stateMap = this._hass && this._hass.states || {};
     const systems = this.systems();
     const system = systems.find((item) => item.id === this._selected) || systems[0];
     if (!system) return;
     this._selected = system.id;
     const sources = this.sourceList(system);
     const costSources = this.sourceList(system, "cost_entity_ids");
-    const historySource = sources.filter((entity) => !money(entity)).sort((a, b) => sourcePriority(system, b) - sourcePriority(system, a))[0];
+    const primarySourceId = this.sourceIds(system)[0] || "";
+    // The first ID in entity_ids.<system> is intentionally the historical
+    // primary. Do not pick a different source based on current availability:
+    // doing so could turn a feeder or a phase into the estate total silently.
+    const primaryCandidate = primarySourceId ? stateMap[primarySourceId] : null;
+    const historySource = primaryCandidate && !money(primaryCandidate) ? primaryCandidate : null;
     const sourceUnit = historySource ? (attrs(historySource).unit_of_measurement || system.unit) : system.unit;
     const configuredValues = this.archiveValues("archive_weekly_values", system.id);
     const configuredCosts = this.archiveValues("archive_weekly_costs", system.id);
@@ -382,35 +613,65 @@ class OrielCard extends HTMLElement {
     const configuredCostDays = this.archiveValues("archive_weekly_cost_matching_days", system.id);
     const configuredStarts = this._config.archive_week_starts && Array.isArray(this._config.archive_week_starts[system.id])
       ? this._config.archive_week_starts[system.id] : [];
-    const explicitCostIds = explicitIds(this._config, "cost_entity_ids", system.id) || [];
+    const explicitCostIds = this.sourceIds(system, "cost_entity_ids");
+    const liveTariffEntities = explicitCostIds.map((id) => stateMap[id] || null);
     const configuredCostLabel = this._config.archive_cost_source_labels && this._config.archive_cost_source_labels[system.id]
       ? String(this._config.archive_cost_source_labels[system.id]).trim() : "";
     const hasConfiguredValues = configuredValues.length > 0;
-    const startsAligned = !configuredStarts.length || (configuredStarts.length === configuredValues.length && configuredStarts.every((start, index) => configuredWeekDetails(start, index)));
+    const archiveAnchor = this.archiveAnchor();
+    const archiveAnchorInvalid = hasOwn(this._config, "archive_anchor") && this._config.archive_anchor !== "" && !archiveAnchor;
+    const startsAligned = !configuredStarts.length || alignedArchiveStarts(configuredStarts, configuredValues.length);
+    const archiveConfigurationError = hasConfiguredValues && (archiveAnchorInvalid
+      ? "archive_anchor is invalid; imported history is withheld"
+      : configuredStarts.length && !startsAligned
+        ? "archive_week_starts must be consecutive UK Mondays; imported history is withheld"
+        : !configuredStarts.length && !archiveAnchor
+          ? "archive history needs valid archive_week_starts or archive_anchor; imported history is withheld"
+          : null);
     const daysAligned = configuredDays.length === configuredValues.length;
     const costsAligned = hasConfiguredValues && configuredCosts.length === configuredValues.length && configuredCostDays.length === configuredValues.length;
     const plansAligned = hasConfiguredValues && configuredPlans.length === configuredValues.length;
     const verifiedCostConfigured = costsAligned && explicitCostIds.length > 0 && Boolean(configuredCostLabel);
     const archiveWarnings = [];
-    if (hasConfiguredValues && !startsAligned) archiveWarnings.push("archive dates are not aligned to the weekly records");
+    if (archiveConfigurationError) archiveWarnings.push(archiveConfigurationError);
     if (hasConfiguredValues && !daysAligned) archiveWarnings.push("usage-day coverage is unknown");
     if (configuredCosts.length && !verifiedCostConfigured) archiveWarnings.push("tariff estimate withheld: approve aligned cost sources, matching days and a source label");
     if (configuredPlans.length && !plansAligned) archiveWarnings.push("plan values withheld: they are not aligned to the weekly records");
     const requestedWeeks = safeWeekCount(this._config.history_weeks);
     const liveHistory = historySource ? this._history.get(historySource.entity_id) || [] : [];
-    const dynamicValues = historySource && this.statisticsEnabled()
-      ? Array.from({ length: requestedWeeks }, (_, index) => historyWeek(weekRange(index, this.statisticsAnchor(), this.statisticsTimeZone()), liveHistory, historySource)) : [];
-    const valueSeries = hasConfiguredValues ? configuredValues : dynamicValues;
+    const statisticsAnchor = this.statisticsAnchor();
+    const liveTariffSourceIssue = !this.costHistoryEnabled() ? ""
+      : !explicitCostIds.length
+        ? "No approved monetary tariff components are configured."
+        : explicitCostIds.length > MAX_LIVE_TARIFF_SOURCES
+          ? `Live tariff estimate supports at most ${MAX_LIVE_TARIFF_SOURCES} approved monetary components.`
+          : liveTariffEntities.some((entity) => !entity)
+            ? "An approved tariff component is not present in this signed-in Home Assistant dashboard."
+            : liveTariffEntities.some((entity) => !money(entity))
+              ? "An approved tariff component is not monetary; tariff estimate is withheld."
+              : liveTariffEntities.some((entity) => !cumulative(entity))
+                ? "An approved tariff component is not a total-increasing counter; tariff estimate is withheld."
+                : "";
+    const liveTariffRange = this.costHistoryEnabled() && statisticsAnchor
+      ? weekRange(0, statisticsAnchor, this.statisticsTimeZone()) : null;
+    const liveTariffConfigurationIssue = liveTariffSourceIssue || (this.costHistoryEnabled() && !statisticsAnchor
+      ? "statistics.anchor is invalid; Recorder tariff history was not requested." : "");
+    const dynamicValues = historySource && this.statisticsEnabled() && statisticsAnchor
+      ? Array.from({ length: requestedWeeks }, (_, index) => historyWeek(weekRange(index, statisticsAnchor, this.statisticsTimeZone()), liveHistory, historySource)) : [];
+    const hasArchive = hasConfiguredValues && !archiveConfigurationError;
+    // Import and Recorder have deliberately separate roles. An approved
+    // historical import remains immutable; the live current UK week is shown
+    // alongside it below instead of being silently spliced into that record.
+    const valueSeries = hasArchive ? configuredValues : dynamicValues;
     const seriesLength = valueSeries.length;
-    const hasArchive = hasConfiguredValues;
-    const weekAnchor = hasArchive ? this.archiveAnchor() : this.statisticsAnchor();
-    const weekTimeZone = hasArchive ? this.archiveTimeZone() : this.statisticsTimeZone() || "Europe/London";
+    const weekAnchor = hasArchive ? archiveAnchor : statisticsAnchor;
+    const weekTimeZone = hasArchive ? this.archiveTimeZone() : this.statisticsTimeZone();
     const weeks = Array.from({ length: seriesLength }, (_, index) => {
       const recordedValue = valueSeries[index] ?? null;
       const costDays = daysFor(configuredCostDays[index]);
       const verifiedWeekCost = verifiedCostConfigured && finite(recordedValue) && finite(configuredCosts[index]) && costDays !== null && costDays > 0;
       return {
-        ...(configuredWeekDetails(configuredStarts[index], index) || weekDetails(index, weekAnchor, weekTimeZone)),
+        ...(hasArchive && configuredStarts.length ? configuredWeekDetails(configuredStarts[index], index) : weekDetails(index, weekAnchor, weekTimeZone)),
         value: recordedValue,
         cost: verifiedWeekCost ? configuredCosts[index] : null,
         plan: plansAligned && finite(configuredPlans[index]) ? configuredPlans[index] : null,
@@ -472,21 +733,77 @@ class OrielCard extends HTMLElement {
     const barValues = weeks.flatMap((week) => [hasCompleteCostSeries ? week.cost : week.value, hasCompleteCostSeries ? week.plan : null]).filter(finite);
     const barMax = Math.max(1, ...barValues.map((item) => Math.abs(item)));
     const costLabel = configuredCostLabel || "No approved tariff source label";
-    const liveSourceCards = [...sources.map((entity) => ({ entityId: entity.entity_id, label: name(entity), value: display(entity), role: "Approved measurement", live: available(entity) })), ...costSources.filter((entity) => !sources.some((source) => source.entity_id === entity.entity_id)).map((entity) => ({ entityId: entity.entity_id, label: name(entity), value: display(entity), role: "Approved cost source", live: available(entity) }))];
+    const liveSourceCards = [...sources.map((entity) => ({ entityId: entity.entity_id, label: entityName(entity), value: display(entity), role: "Approved measurement", live: available(entity) })), ...costSources.filter((entity) => !sources.some((source) => source.entity_id === entity.entity_id)).map((entity) => ({ entityId: entity.entity_id, label: entityName(entity), value: display(entity), role: "Approved cost source", live: available(entity) }))];
     const archiveSourceDetails = this._config.archive_source_details && Array.isArray(this._config.archive_source_details[system.id])
       ? this._config.archive_source_details[system.id] : [];
     const sourceCards = [...liveSourceCards];
     archiveSourceDetails.forEach((detail) => {
       const entityId = typeof detail?.entity_id === "string" ? detail.entity_id : "";
       const label = typeof detail?.label === "string" ? detail.label : entityId;
-      if (!entityId || !label || sourceCards.some((source) => source.entityId === entityId)) return;
-      sourceCards.push({ entityId, label, value: "Archive source", role: typeof detail.role === "string" ? detail.role : "Approved archive source", live: false });
+      if (!/^sensor\./i.test(entityId) || !label || sourceCards.some((source) => source.entityId === entityId)) return;
+      sourceCards.push({ entityId, label, value: "Archive source", role: typeof detail.role === "string" ? detail.role : "Approved archive source", live: false, archive: true, recordType: "source" });
     });
-    const historyLoading = historySource && this._historyLoading.has(historySource.entity_id);
+    const archiveRecordByEntityId = new Map(sourceCards.filter((source) => source.archive).map((source) => [source.entityId, source]));
+    selectedBreakdownRows.filter((row) => !row.entity).forEach((row) => {
+      archiveRecordByEntityId.set(row.entityId, {
+        entityId: row.entityId,
+        label: row.label,
+        role: row.role,
+        relation: row.relation,
+        value: row.value,
+        unit: row.unit,
+        days: row.days,
+        range: selectedWeek ? selectedWeek.calendar : "Selected week unavailable",
+        archiveUsable: row.archiveUsable,
+        unavailableReason: row.unavailableReason,
+        recordType: "measurement",
+      });
+    });
+    const selectedArchiveSource = archiveRecordByEntityId.get(this._selectedArchiveSource) || null;
+    const archiveInspector = !selectedArchiveSource ? "" : selectedArchiveSource.recordType === "measurement" ? (() => {
+      const hasRecordedValue = selectedArchiveSource.archiveUsable && finite(selectedArchiveSource.value);
+      const coverage = selectedArchiveSource.days !== null
+        ? `${selectedArchiveSource.days} recorded day${selectedArchiveSource.days === 1 ? "" : "s"}`
+        : selectedArchiveSource.unavailableReason || "No recorded coverage for the selected week";
+      const relationship = selectedArchiveSource.relation === "part_of_total" ? "Part of selected total" : "Independent meter";
+      const recordedValue = hasRecordedValue ? esc(format(selectedArchiveSource.value, selectedArchiveSource.unit)) : "Withheld";
+      return `<div class="archive-modal" data-archive-overlay><button class="archive-modal-backdrop" type="button" data-close-archive data-archive-backdrop aria-label="Close source detail"></button><aside class="archive-inspector" data-archive-dialog role="dialog" aria-modal="true" aria-labelledby="archive-detail-title" aria-describedby="archive-detail-note"><div class="archive-inspector-head"><div><p class="archive-eyebrow">Recorded source detail</p><h4 id="archive-detail-title">${esc(selectedArchiveSource.label)}</h4></div><button class="archive-close" type="button" data-close-archive aria-label="Close detail for ${esc(selectedArchiveSource.label)}">Close</button></div><section class="archive-summary"><div><span>Selected week</span><strong>${esc(selectedArchiveSource.range)}</strong></div><div><span>Recorded use</span><strong>${recordedValue}</strong><small>${esc(coverage)}</small></div></section><dl><div><dt>Entity ID</dt><dd>${esc(selectedArchiveSource.entityId)}</dd></div><div><dt>Role</dt><dd>${esc(selectedArchiveSource.role)}</dd></div><div><dt>Relationship</dt><dd>${relationship}</dd></div><div><dt>Status</dt><dd>Archive-only source — no current state is available in this Home Assistant instance.</dd></div></dl><p id="archive-detail-note">This configured source uses only the aligned archive measurement and coverage shown above. It does not imply a live state, tariff allocation, invoice or cash payment.</p></aside></div>`;
+    })() : `<div class="archive-modal" data-archive-overlay><button class="archive-modal-backdrop" type="button" data-close-archive data-archive-backdrop aria-label="Close source detail"></button><aside class="archive-inspector" data-archive-dialog role="dialog" aria-modal="true" aria-labelledby="archive-detail-title" aria-describedby="archive-detail-note"><div class="archive-inspector-head"><div><p class="archive-eyebrow">Archive source record</p><h4 id="archive-detail-title">${esc(selectedArchiveSource.label)}</h4></div><button class="archive-close" type="button" data-close-archive aria-label="Close detail for ${esc(selectedArchiveSource.label)}">Close</button></div><dl><div><dt>Entity ID</dt><dd>${esc(selectedArchiveSource.entityId)}</dd></div><div><dt>Role</dt><dd>${esc(selectedArchiveSource.role)}</dd></div><div><dt>Status</dt><dd>Archive-only source — no current state is available in this Home Assistant instance.</dd></div></dl><p id="archive-detail-note">This approved archive record documents the provenance of data displayed in Oriel. No component-level weekly amount, invoice, cash payment or live state is inferred from it.</p><p>${esc(costLabel)}</p></aside></div>`;
+    // Meter and monetary histories use the same established, read-only Home
+    // Assistant history command. Monetary values remain separate from
+    // `hass.states`: only validated Recorder deltas can form the live tariff
+    // estimate below.
+    if (historySource && cumulative(historySource)) this.requestHistory(historySource, requestedWeeks);
+    if (this.costHistoryEnabled() && !liveTariffConfigurationIssue) {
+      liveTariffEntities.forEach((entity) => this.requestHistory(entity, 1));
+    }
+    const historyLoading = Boolean(historySource && this._historyLoading.has(historySource.entity_id));
+    const historyError = historySource ? this._historyErrors.get(historySource.entity_id) || "" : "";
+    const liveTariffLoading = this.costHistoryEnabled() && !liveTariffConfigurationIssue
+      && liveTariffEntities.some((entity) => Boolean(entity && this._historyLoading.has(entity.entity_id)));
+    const liveTariffHistoryError = this.costHistoryEnabled() && !liveTariffConfigurationIssue
+      && liveTariffEntities.some((entity) => Boolean(entity && this._historyErrors.get(entity.entity_id)))
+      ? "Recorder tariff history is unavailable to this signed-in user." : "";
+    const liveTariffEstimate = liveTariffRange && !liveTariffConfigurationIssue
+      ? tariffEstimateWeek(liveTariffRange, liveTariffEntities.map((entity) => ({ entity, history: this._history.get(entity.entity_id) || [] }))) : null;
+    const liveTariffThrough = liveTariffEstimate ? new Intl.DateTimeFormat("en-GB", {
+      timeZone: this.statisticsTimeZone(), day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false,
+    }).format(new Date(liveTariffEstimate.terminalAt)) : "";
+    const primarySourceError = primarySourceId && !primaryCandidate
+      ? `Primary source ${primarySourceId} is not present in this signed-in Home Assistant dashboard.`
+      : primaryCandidate && money(primaryCandidate)
+        ? `Primary source ${primarySourceId} is monetary; a weekly measurement source is required.`
+        : historySource && !cumulative(historySource)
+          ? `Primary source ${primarySourceId} is not an approved cumulative meter; weekly use is withheld.`
+          : "";
+    const liveCurrentWeek = dynamicValues[0] ?? null;
+    const liveNow = historySource ? display(historySource) : "No current source";
+    const liveUpdated = historySource && historySource.last_updated ? new Intl.DateTimeFormat("en-GB", {
+      timeZone: this.statisticsTimeZone(), day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false,
+    }).format(new Date(historySource.last_updated)) : "State time unavailable";
     const allSensors = this._config.show_catalog === true
       ? Object.values(this._hass && this._hass.states || {}).filter((entity) => /^sensor\./i.test(entity.entity_id)) : [];
     const groups = allSensors.reduce((result, entity) => { const key = category(entity.entity_id); (result[key] ||= []).push(entity); return result; }, {});
-    this.requestHistory(historySource, requestedWeeks);
 
     const oldest = timelineWeeks[0];
     const newest = timelineWeeks.at(-1);
@@ -499,15 +816,25 @@ class OrielCard extends HTMLElement {
         * { box-sizing:border-box; } button { font:inherit; } .card { overflow:hidden; border-radius:22px; background:#102030; color:#f8f3e9; box-shadow:0 8px 24px rgba(19,30,39,.2); }
         header { display:flex; justify-content:space-between; gap:12px; padding:16px 18px 13px; border-bottom:1px solid rgba(255,255,255,.1); }.brand{font-weight:800;font-size:18px;letter-spacing:-.04em}.sub{margin-top:3px;color:#9babb3;font-size:10px}.state{align-self:start;padding:6px 8px;border-radius:99px;background:rgba(123,170,125,.17);color:#c3d9c4;font-size:9px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.dot{display:inline-block;width:6px;height:6px;margin-right:5px;border-radius:50%;background:#8dc493}
         .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:11px 12px 0}.tab{min-width:0;border:1px solid rgba(222,197,150,.25);border-radius:9px;background:rgba(255,255,255,.04);color:#d6e0df;padding:8px 3px;font-size:11px;font-weight:700;cursor:pointer}.tab[aria-selected="true"]{border-color:#f7f3e9;background:#f7f3e9;color:#102030}
+        .live-context{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:9px;margin:13px 18px 4px;padding:11px;border:1px solid rgba(141,196,147,.32);border-radius:12px;background:rgba(111,157,132,.11)}.live-context.has-tariff{grid-template-columns:repeat(3,minmax(0,1fr))}.live-context p{margin:0}.live-context strong{display:block;margin-top:4px;color:#f7f3e9;font-size:15px;letter-spacing:-.03em;overflow-wrap:anywhere}.live-context small{display:block;margin-top:4px;color:rgba(248,243,233,.58);font-size:9px;line-height:1.35}.live-context .context-label{color:#bcdabc}.live-context .live-warning{grid-column:1/-1;color:#f0c1ae;font-size:10px;line-height:1.35}.live-context .live-note{grid-column:1/-1;color:rgba(248,243,233,.62);font-size:9px;line-height:1.35}
         .overview{padding:16px 18px 14px;border-bottom:1px solid rgba(222,197,150,.7)}.eyebrow{margin:0;color:#d9b779;font-size:10px;font-weight:800;letter-spacing:.15em;text-transform:uppercase}.summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:12px}.summary{min-height:72px;padding:11px;border:1px solid rgba(222,197,150,.25);border-radius:12px;background:rgba(255,255,255,.09)}.summary span,.context-label{display:block;color:rgba(248,243,233,.52);font-size:9px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.summary strong{display:block;margin-top:5px;font-size:21px;line-height:1.05;letter-spacing:-.05em;overflow-wrap:anywhere}.comparison{min-height:16px;margin:10px 1px 0;color:#cad6d5;font-size:11px}.comparison b{color:#d9b779}.comparison.over b{color:#e4b6a1}.comparison.under b{color:#b8d2bc}
         .focus{padding:16px 18px 12px}.focus-head{display:flex;justify-content:space-between;gap:12px}.focus-left{min-width:0}.focus-title{margin:0;color:rgba(248,243,233,.52);font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}.focus-value{margin:6px 0 0;font-size:31px;font-weight:800;letter-spacing:-.06em;line-height:1}.focus-use{margin:6px 0 0;color:#ccd7d8;font-size:11px}.focus-date{margin:8px 0 0;color:#e7e2d8;font-size:13px;line-height:1.25}.focus-code{margin:3px 0 0;color:rgba(248,243,233,.46);font-size:9px;letter-spacing:.03em}.status{text-align:right;white-space:nowrap}.status b{display:block;color:#d9b779;font-size:12px}.status.over b{color:#e4b6a1}.status.under b{color:#b8d2bc}.status span{display:block;margin-top:6px;color:rgba(248,243,233,.5);font-size:10px}.focus-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px}.mini{min-width:0;padding:9px;border-radius:10px;background:rgba(255,255,255,.06)}.mini span{display:block;color:rgba(248,243,233,.45);font-size:8px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.mini strong{display:block;margin-top:4px;font-size:13px;letter-spacing:-.03em;overflow-wrap:anywhere}.mini small{display:block;margin-top:3px;color:rgba(248,243,233,.45);font-size:8px;line-height:1.25}
-        .timeline-wrap{padding:0 12px 0}.timeline-label{margin:2px 6px 7px;color:rgba(248,243,233,.38);font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.timeline-frame{position:relative}.focus-line{pointer-events:none;position:absolute;z-index:2;left:0;right:0;top:50%;height:1px;background:#d9b779}.timeline{height:268px;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y mandatory;padding:112px 2px;scroll-behavior:smooth}.week{display:grid;grid-template-columns:86px minmax(46px,1fr) 84px;align-items:center;gap:8px;width:100%;height:46px;padding:0 5px;border:0;background:rgba(255,255,255,.02);color:#e7ece9;text-align:left;cursor:pointer;scroll-snap-align:center}.week:hover,.week[aria-current="true"]{background:rgba(255,255,255,.09)}.week[aria-current="true"] .week-date{color:#e4c27b;font-weight:800}.week-date{font-size:10px;line-height:1.15}.week-date small{display:block;margin-top:2px;color:rgba(248,243,233,.38);font-size:8px}.track{position:relative;height:13px}.track::before{content:"";position:absolute;inset:2px 0;border-radius:5px;background:#203847}.bar{position:absolute;left:0;bottom:3px;height:7px;border-radius:5px;background:#f7f3e9}.bar.under{background:#c5d6c4}.bar.over{background:#e4b6a1}.bar.recorded{background:#9db3b4}.plan-tick{position:absolute;z-index:1;top:0;bottom:0;width:1px;border-left:1px dashed rgba(248,243,233,.64)}.week-value{text-align:right;font-size:10px;line-height:1.1}.week-value strong{display:block;font-size:10px}.week-value .no-record{color:rgba(248,243,233,.42)}.controls{display:flex;gap:6px;padding:10px 14px;border-top:1px solid rgba(255,255,255,.1)}.controls button{border:0;border-radius:99px;background:rgba(255,255,255,.1);color:#e9edeb;padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer}
-        .breakdown{margin:0 12px 15px;border:1px solid rgba(222,197,150,.42);border-radius:13px;background:#172c3a;overflow:hidden}.breakdown summary{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;padding:12px 13px;color:#f7f3e9;font-size:12px;font-weight:800}.breakdown summary span{min-width:0}.breakdown summary em{flex:none;color:#d9b779;font-size:9px;font-style:normal;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.breakdown-body{padding:0 12px 12px;border-top:1px solid rgba(222,197,150,.2)}.breakdown-note{margin:10px 0 9px;color:rgba(248,243,233,.62);font-size:10px;line-height:1.42}.breakdown-row{display:grid;grid-template-columns:minmax(83px,1.1fr) minmax(40px,1fr) minmax(62px,.8fr);align-items:center;gap:8px;padding:9px 0;border-top:1px solid rgba(255,255,255,.08)}.breakdown-row:first-of-type{border-top:0}.breakdown-label{min-width:0}.breakdown-label b{display:block;overflow:hidden;color:#f7f3e9;font-size:11px;text-overflow:ellipsis;white-space:nowrap}.breakdown-label small{display:block;overflow:hidden;margin-top:3px;color:rgba(248,243,233,.47);font-size:8px;text-overflow:ellipsis;white-space:nowrap}.breakdown-track{position:relative;height:12px}.breakdown-track::before{content:"";position:absolute;inset:2px 0;border-radius:5px;background:#294252}.breakdown-bar{position:absolute;left:0;bottom:3px;height:6px;border-radius:5px;background:#9db3b4}.breakdown-bar.component{background:#d9b779}.breakdown-value{text-align:right}.breakdown-value strong{display:block;color:#f7f3e9;font-size:11px;line-height:1.1}.breakdown-value small{display:block;margin-top:3px;color:rgba(248,243,233,.5);font-size:8px;line-height:1.15}.breakdown-unavailable{color:rgba(248,243,233,.47)!important}.sources{background:#f8f4ec;color:#173448;padding:15px 18px 18px}.sources-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}.sources h3{margin:0;font-size:15px;letter-spacing:-.03em}.sources-head span{color:#78868d;font-size:10px}.source-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}.source{min-width:0;padding:10px;border:1px solid #ded4c4;border-radius:10px;background:#fffdf8}.source .role{display:block;color:#8c7040;font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.source b{display:block;overflow:hidden;margin-top:4px;text-overflow:ellipsis;white-space:nowrap;font-size:11px}.source .source-value{display:block;margin-top:5px;color:#8c7040;font-size:11px}.source small{display:block;overflow:hidden;margin-top:4px;color:#71808a;font-size:8px;text-overflow:ellipsis;white-space:nowrap}.source-note{margin:10px 0 0;color:#667780;font-size:10px;line-height:1.4}.empty{padding:14px;color:#a8b7bc;font-size:11px;line-height:1.45}.sources .empty{border:1px dashed #d6c9b8;border-radius:10px;color:#61717a}
+        .timeline-wrap{padding:0 12px 0}.timeline-label{margin:2px 6px 7px;color:rgba(248,243,233,.38);font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.timeline-frame{position:relative}.focus-line{pointer-events:none;position:absolute;z-index:2;left:0;right:0;top:50%;height:1px;background:#d9b779}.timeline{height:268px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:112px 2px}.week{display:grid;grid-template-columns:86px minmax(46px,1fr) 84px;align-items:center;gap:8px;width:100%;height:46px;padding:0 5px;border:0;background:rgba(255,255,255,.02);color:#e7ece9;text-align:left;cursor:pointer}.week:hover,.week[aria-current="true"]{background:rgba(255,255,255,.09)}.week[aria-current="true"] .week-date{color:#e4c27b;font-weight:800}.week-date{font-size:10px;line-height:1.15}.week-date small{display:block;margin-top:2px;color:rgba(248,243,233,.38);font-size:8px}.track{position:relative;height:13px}.track::before{content:"";position:absolute;inset:2px 0;border-radius:5px;background:#203847}.bar{position:absolute;left:0;bottom:3px;height:7px;border-radius:5px;background:#f7f3e9}.bar.under{background:#c5d6c4}.bar.over{background:#e4b6a1}.bar.recorded{background:#9db3b4}.plan-tick{position:absolute;z-index:1;top:0;bottom:0;width:1px;border-left:1px dashed rgba(248,243,233,.64)}.week-value{text-align:right;font-size:10px;line-height:1.1}.week-value strong{display:block;font-size:10px}.week-value .no-record{color:rgba(248,243,233,.42)}.controls{display:flex;gap:6px;padding:10px 14px;border-top:1px solid rgba(255,255,255,.1)}.controls button{border:0;border-radius:99px;background:rgba(255,255,255,.1);color:#e9edeb;padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer}
+        .breakdown{margin:0 12px 15px;border:1px solid rgba(222,197,150,.42);border-radius:13px;background:#172c3a;overflow:hidden}.breakdown summary{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;padding:12px 13px;color:#f7f3e9;font-size:12px;font-weight:800}.breakdown summary span{min-width:0}.breakdown summary em{flex:none;color:#d9b779;font-size:9px;font-style:normal;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.breakdown-body{padding:0 12px 12px;border-top:1px solid rgba(222,197,150,.2)}.breakdown-note{margin:10px 0 9px;color:rgba(248,243,233,.62);font-size:10px;line-height:1.42}.breakdown-row{display:grid;grid-template-columns:minmax(83px,1.1fr) minmax(40px,1fr) minmax(62px,.8fr);align-items:center;gap:8px;padding:9px 0;border-top:1px solid rgba(255,255,255,.08)}.breakdown-row:first-of-type{border-top:0}.breakdown-label{min-width:0}.breakdown-label b{display:block;overflow:hidden;color:#f7f3e9;font-size:11px;text-overflow:ellipsis;white-space:nowrap}.breakdown-label small{display:block;overflow:hidden;margin-top:3px;color:rgba(248,243,233,.47);font-size:8px;text-overflow:ellipsis;white-space:nowrap}.breakdown-track{position:relative;height:12px}.breakdown-track::before{content:"";position:absolute;inset:2px 0;border-radius:5px;background:#294252}.breakdown-bar{position:absolute;left:0;bottom:3px;height:6px;border-radius:5px;background:#9db3b4}.breakdown-bar.component{background:#d9b779}.breakdown-value{text-align:right}.breakdown-value strong{display:block;color:#f7f3e9;font-size:11px;line-height:1.1}.breakdown-value small{display:block;margin-top:3px;color:rgba(248,243,233,.5);font-size:8px;line-height:1.15}.breakdown-open{display:block;margin-top:3px;color:#d9b779!important;font-size:8px!important;font-weight:800;letter-spacing:.06em;text-transform:uppercase}.breakdown-unavailable{color:rgba(248,243,233,.47)!important}.breakdown-row.source-action{width:100%;border-width:1px 0 0;border-style:solid;border-color:rgba(255,255,255,.08);background:transparent;text-align:left;cursor:pointer}.breakdown-row.source-action:first-of-type{border-top:0}.breakdown-row.source-action:hover{background:rgba(255,255,255,.06)}.sources{background:#f8f4ec;color:#173448;padding:15px 18px 18px}.sources-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}.sources h3{margin:0;font-size:15px;letter-spacing:-.03em}.sources-head span{color:#78868d;font-size:10px}.source-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}.source{min-width:0;padding:10px;border:1px solid #ded4c4;border-radius:10px;background:#fffdf8}.source .role{display:block;color:#8c7040;font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.source b{display:block;overflow:hidden;margin-top:4px;text-overflow:ellipsis;white-space:nowrap;font-size:11px}.source .source-value{display:block;margin-top:5px;color:#8c7040;font-size:11px}.source small{display:block;overflow:hidden;margin-top:4px;color:#71808a;font-size:8px;text-overflow:ellipsis;white-space:nowrap}.source-action{display:block;width:100%;color:inherit;font:inherit;text-align:left;text-decoration:none;cursor:pointer}.source-action:hover{border-color:#b9995d;background:#fff}.source-action:focus-visible,.breakdown-row.source-action:focus-visible{outline:2px solid #b9995d;outline-offset:2px}.source-open{display:block;margin-top:6px;color:#8c7040;font-size:8px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.archive-inspector{margin-top:10px;padding:11px;border:1px solid #c9b58d;border-radius:11px;background:#fffdf8}.archive-inspector-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.archive-inspector h4{margin:4px 0 0;color:#173448;font-size:12px}.archive-eyebrow{margin:0;color:#8c7040;font-size:8px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}.archive-close{flex:none;border:1px solid #d2c3ab;border-radius:8px;background:#fff;color:#173448;padding:5px 7px;font:inherit;font-size:9px;font-weight:800;cursor:pointer}.archive-inspector dl{display:grid;grid-template-columns:1fr;gap:8px;margin:10px 0}.archive-inspector dt{color:#8c7040;font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.archive-inspector dd{margin:2px 0 0;color:#40545d;font-size:10px;line-height:1.35;overflow-wrap:anywhere}.archive-inspector p{margin:8px 0 0;color:#60727b;font-size:10px;line-height:1.4}.source-note{margin:10px 0 0;color:#667780;font-size:10px;line-height:1.4}.empty{padding:14px;color:#a8b7bc;font-size:11px;line-height:1.45}.sources .empty{border:1px dashed #d6c9b8;border-radius:10px;color:#61717a}
         details[data-catalog]{margin:0 18px 18px;border:1px solid #ddd2c1;border-radius:12px;background:#fffdf8;overflow:hidden}details[data-catalog] summary{cursor:pointer;padding:12px;color:#173448;font-size:12px;font-weight:800}.catalog{padding:0 12px 12px}.catalog h4{margin:14px 0 7px;color:#8c7040;font-size:9px;letter-spacing:.12em;text-transform:uppercase}.catalog .source-grid{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:0}.footnote{background:#f8f4ec;color:#74838a;padding:0 18px 17px;font-size:9px;line-height:1.45}@media(max-width:420px){.tab{font-size:9px}.week{grid-template-columns:80px minmax(40px,1fr) 67px}.focus-value{font-size:28px}.source-grid,.catalog .source-grid{grid-template-columns:1fr}.breakdown-row{grid-template-columns:76px minmax(34px,1fr) 58px;gap:6px}.timeline{height:250px}.timeline-wrap{padding:0 9px}.overview,.focus{padding-left:14px;padding-right:14px}}
+      </style>
+      <style>
+        .archive-modal{position:fixed;z-index:2147483647;inset:0;display:grid;place-items:center;padding:16px}
+        .archive-modal-backdrop{position:absolute;inset:0;width:100%;height:100%;border:0;padding:0;background:rgba(7,18,28,.62);cursor:default}
+        .archive-inspector{position:relative;z-index:1;width:min(440px,calc(100vw - 32px));max-height:calc(100dvh - 32px);margin:0;overflow:auto;padding:16px;border:1px solid #c9b58d;border-radius:15px;background:#fffdf8;box-shadow:0 22px 60px rgba(0,0,0,.38)}
+        .archive-inspector-head{position:sticky;top:-16px;z-index:1;margin:-16px -16px 0;padding:16px;background:#fffdf8;border-radius:15px 15px 0 0;border-bottom:1px solid #e6dccd}
+        .archive-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:14px 0 0;padding:11px;border-radius:10px;background:#f4ecdf}.archive-summary span{display:block;color:#8c7040;font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.archive-summary strong{display:block;margin-top:4px;color:#173448;font-size:13px;line-height:1.25}.archive-summary small{display:block;margin-top:3px;color:#60727b;font-size:9px;line-height:1.3}.archive-inspector dl{margin-top:14px}.archive-close{min-height:30px}.archive-modal .archive-inspector p:last-child{padding-bottom:2px}
+        @media(max-width:420px){.live-context,.live-context.has-tariff{grid-template-columns:1fr;margin-left:14px;margin-right:14px}.archive-modal{padding:12px}.archive-inspector{width:calc(100vw - 24px);max-height:calc(100dvh - 24px);padding:14px}.archive-inspector-head{top:-14px;margin:-14px -14px 0;padding:14px;border-radius:13px 13px 0 0}}
       </style>
       <article class="card">
         <header><div><div class="brand">Oriel</div><div class="sub">Aldworth · recorded Home Assistant history</div></div><div class="state"><i class="dot"></i>read only</div></header>
-        <nav class="tabs" aria-label="Oriel systems">${systems.map((item) => `<button class="tab" data-system="${esc(item.id)}" aria-selected="${item.id === system.id}">${esc(item.icon)} ${esc(item.label)}</button>`).join("")}</nav>
+        <nav class="tabs" aria-label="Oriel systems">${systems.map((item) => `<button class="tab" type="button" data-system="${esc(item.id)}" aria-selected="${item.id === system.id}">${esc(item.icon)} ${esc(item.label)}</button>`).join("")}</nav>
+        ${(historySource || primarySourceError) ? `<section class="live-context${this.costHistoryEnabled() ? " has-tariff" : ""}" aria-label="Current Home Assistant state"><div><span class="context-label">Live now</span><strong>${esc(liveNow)}</strong><small>${historySource ? `${esc(entityName(historySource))} · ${esc(liveUpdated)}` : "No approved current state"}</small></div><div><span class="context-label">This UK week · Recorder</span><strong>${historyLoading ? "Loading…" : historyError || primarySourceError ? "Withheld" : finite(liveCurrentWeek) ? esc(format(liveCurrentWeek, sourceUnit)) : "No verified use"}</strong><small>${historyLoading ? "Reading the approved primary meter" : historyError || primarySourceError ? "Fix the item below before relying on weekly use" : finite(liveCurrentWeek) ? "Validated counter change since Monday 00:00 UK" : "Needs a cumulative baseline and later Recorder sample"}</small></div>${this.costHistoryEnabled() ? `<div><span class="context-label">This UK week · tariff estimate</span><strong>${liveTariffLoading ? "Loading…" : liveTariffConfigurationIssue || liveTariffHistoryError ? "Withheld" : liveTariffEstimate ? esc(format(liveTariffEstimate.value, "", true)) : "No verified estimate"}</strong><small>${liveTariffLoading ? "Reading approved Recorder tariff components" : liveTariffConfigurationIssue || liveTariffHistoryError ? "Fix the item below before relying on this estimate" : liveTariffEstimate ? `${liveTariffEstimate.sourceCount} approved component${liveTariffEstimate.sourceCount === 1 ? "" : "s"} · Recorder through ${liveTariffThrough}` : "Needs a cumulative, reset-free Recorder history for every approved tariff component"}</small></div>` : ""}${historyError ? `<p class="live-warning">${esc(historyError)}</p>` : ""}${primarySourceError ? `<p class="live-warning">${esc(primarySourceError)}</p>` : ""}${liveTariffConfigurationIssue ? `<p class="live-warning">${esc(liveTariffConfigurationIssue)}</p>` : ""}${liveTariffHistoryError ? `<p class="live-warning">${esc(liveTariffHistoryError)}</p>` : ""}${archiveConfigurationError ? `<p class="live-warning">${esc(archiveConfigurationError)}</p>` : ""}${this.costHistoryEnabled() ? `<p class="live-note">Current-week tariff estimate is derived only from reset-free Recorder deltas of the approved monetary counters. It is not an invoice, cash-spend ledger or sum of current monetary states.</p>` : ""}${hasArchive ? `<p class="live-note">Live current-week use is intentionally separate from the imported closed-week record; the two series are not silently combined.</p>` : ""}</section>` : ""}
         ${weeks.length ? `
           <section class="overview">
             <p class="eyebrow">${weeks.length} week${weeks.length === 1 ? "" : "s"} to focus · ${esc(oldest.range)} → ${esc(newest.range)}</p>
@@ -546,13 +873,17 @@ class OrielCard extends HTMLElement {
               ? `${Math.round(row.value / selectedWeek.value * 100)}% of total` : row.role;
             const coverage = row.days !== null ? `${row.days} recorded day${row.days === 1 ? "" : "s"}`
               : row.loading ? "Loading approved history…" : row.unavailableReason || "Coverage unavailable";
-            return `<div class="breakdown-row"><div class="breakdown-label"><b title="${esc(row.label)}">${esc(row.label)}</b><small title="${esc(row.entityId)}">${esc(share)} · ${esc(row.entityId)}</small></div><div class="breakdown-track"><i class="breakdown-bar ${row.relation === "part_of_total" ? "component" : ""}" style="width:${width}%"></i></div><div class="breakdown-value"><strong class="${finite(row.value) ? "" : "breakdown-unavailable"}">${finite(row.value) ? esc(format(row.value, row.unit)) : "—"}</strong><small>${esc(coverage)}</small>${row.entity ? `<small>Live ${esc(display(row.entity))}</small>` : ""}</div></div>`;
+            const rowContent = `<div class="breakdown-label"><b title="${esc(row.label)}">${esc(row.label)}</b><small title="${esc(row.entityId)}">${esc(share)} · ${esc(row.entityId)}</small></div><div class="breakdown-track"><i class="breakdown-bar ${row.relation === "part_of_total" ? "component" : ""}" style="width:${width}%"></i></div><div class="breakdown-value"><strong class="${finite(row.value) ? "" : "breakdown-unavailable"}">${finite(row.value) ? esc(format(row.value, row.unit)) : "—"}</strong><small>${esc(coverage)}</small>${row.entity ? `<small>Live ${esc(display(row.entity))}</small><small class="breakdown-open">Open details ↗</small>` : `<small class="breakdown-open">View archive record</small>`}</div>`;
+            return row.entity ? `<button class="breakdown-row source-action" type="button" data-entity="${esc(row.entityId)}" aria-label="Open ${esc(row.label)} in Home Assistant">${rowContent}</button>` : `<button class="breakdown-row source-action" type="button" data-archive-entity="${esc(row.entityId)}" aria-haspopup="dialog" aria-label="View ${esc(row.label)} recorded source detail">${rowContent}</button>`;
           }).join("")}</div></details></section>` : ""}
-        ` : `<section class="empty">${historyLoading ? "Loading Recorder statistics for the approved source…" : this.statisticsEnabled() ? "No recorded statistics are available for the approved source yet." : "Weekly statistics are disabled. Add statistics: true to this card configuration."}</section>`}
-        <section class="sources"><div class="sources-head"><h3>Sources used</h3><span>${sourceCards.filter((source) => source.live).length} live · ${sourceCards.length} approved</span></div>${sourceCards.length ? `<div class="source-grid">${sourceCards.map((source) => `<div class="source"><span class="role">${esc(source.role)}</span><b title="${esc(source.label)}">${esc(source.label)}</b><span class="source-value">${esc(source.value)}</span><small>${esc(source.entityId)}</small></div>`).join("")}</div>` : `<div class="empty">No approved source in this system.</div>`}<p class="source-note">${hasCompleteCostSeries ? `${esc(costLabel)} is shown only for the matching archived weeks; it is not an invoice or cash-spend ledger.` : archiveWarnings.length ? esc(archiveWarnings.join(" · ")) : "Add approved cost sources and matching archived weekly costs only when their source and coverage have been validated."}</p></section>
-        ${allSensors.length ? `<details data-catalog ${this._expanded ? "open" : ""}><summary>Full administrator sensor catalogue · ${allSensors.filter(available).length}/${allSensors.length} available</summary><div class="catalog">${Object.entries(groups).sort(([a,], [b,]) => a.localeCompare(b)).map(([label, entries]) => `<h4>${esc(label)} · ${entries.length}</h4><div class="source-grid">${entries.sort((a, b) => name(a).localeCompare(name(b))).map((entity) => `<div class="source"><b title="${esc(name(entity))}">${esc(name(entity))}</b><span class="source-value">${esc(display(entity))}</span><small>${esc(entity.entity_id)}</small></div>`).join("")}</div>`).join("")}</div></details>` : ""}
+        ` : `<section class="empty">${archiveConfigurationError || historyError || primarySourceError || (historyLoading ? "Loading Recorder statistics for the approved source…" : this.statisticsEnabled() ? "No verified Recorder statistics are available for the approved source yet." : "Weekly statistics are disabled. Add statistics: true to this card configuration.")}</section>`}
+        <section class="sources"><div class="sources-head"><h3>Sources used</h3><span>${sourceCards.filter((source) => source.live).length} live · ${sourceCards.length} approved</span></div>${sourceCards.length ? `<div class="source-grid">${sourceCards.map((source) => {
+          const sourceContent = `<span class="role">${esc(source.role)}</span><b title="${esc(source.label)}">${esc(source.label)}</b><span class="source-value">${esc(source.value)}</span><small>${esc(source.entityId)}</small>`;
+          return stateMap[source.entityId] ? `<button class="source source-action" type="button" data-entity="${esc(source.entityId)}" aria-label="Open ${esc(source.label)} in Home Assistant">${sourceContent}<span class="source-open">Open details ↗</span></button>` : source.archive ? `<button class="source source-action" type="button" data-archive-entity="${esc(source.entityId)}" aria-haspopup="dialog" aria-label="View ${esc(source.label)} archive record">${sourceContent}<span class="source-open">View archive record</span></button>` : `<div class="source">${sourceContent}</div>`;
+        }).join("")}</div>` : `<div class="empty">No approved source in this system.</div>`}<p class="source-note">${hasCompleteCostSeries ? `${esc(costLabel)} is shown only for the matching archived weeks; it is not an invoice or cash-spend ledger.` : archiveWarnings.length ? esc(archiveWarnings.join(" · ")) : "Add approved cost sources and matching archived weekly costs only when their source and coverage have been validated."}</p></section>
+        ${allSensors.length ? `<details data-catalog ${this._expanded ? "open" : ""}><summary>Full administrator sensor catalogue · ${allSensors.filter(available).length}/${allSensors.length} available</summary><div class="catalog">${Object.entries(groups).sort(([a,], [b,]) => a.localeCompare(b)).map(([label, entries]) => `<h4>${esc(label)} · ${entries.length}</h4><div class="source-grid">${entries.sort((a, b) => entityName(a).localeCompare(entityName(b))).map((entity) => `<button class="source source-action" type="button" data-entity="${esc(entity.entity_id)}" aria-label="Open ${esc(entityName(entity))} in Home Assistant"><b title="${esc(entityName(entity))}">${esc(entityName(entity))}</b><span class="source-value">${esc(display(entity))}</span><small>${esc(entity.entity_id)}</small></button>`).join("")}</div>`).join("")}</div></details>` : ""}
         <div class="footnote">Oriel reads approved Home Assistant states already present in this signed-in dashboard. ${this.statisticsEnabled() ? "Weekly consumption statistics use read-only Recorder queries only for explicitly configured sources." : "No Recorder history is requested."} It has no control buttons, external requests, tokens or service calls.</div>
-      </article>`;
+      </article>${archiveInspector}`;
     this.afterRender();
   }
 }

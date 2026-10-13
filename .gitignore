@@ -51,5 +51,10 @@ next-env.d.ts
 /public/oriel-private/
 /home-assistant/oriel-card/test-fixtures/
 
+# Per-estate handoff configurations can include Recorder history, tariff
+# estimates and entity topology. They are deliberately staged locally for an
+# approved administrator and must never be committed to the public project.
+/home-assistant/oriel-card/private-handoff/
+
 # local screenshots
 .tmp-screens/

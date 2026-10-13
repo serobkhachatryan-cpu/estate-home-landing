@@ -35,11 +35,21 @@ Download only from these repository links:
 | `oriel-card.js` | Normal Home Assistant dashboard card | [Download card](https://raw.githubusercontent.com/serobkhachatryan-cpu/estate-home-landing/main/home-assistant/oriel-card/oriel-card.js) |
 | `oriel-panel.js` | Optional full-screen sidebar panel | [Download panel](https://raw.githubusercontent.com/serobkhachatryan-cpu/estate-home-landing/main/home-assistant/oriel-panel/oriel-panel.js) |
 | This guide | Current installation steps | [Open guide on GitHub](https://github.com/serobkhachatryan-cpu/estate-home-landing/blob/main/home-assistant/ADMINISTRATOR-GUIDE.md) |
+| Release QA runbook (Russian) | v20 server acceptance, live/Recorder/tariff checks and rollback | [Open release QA runbook](https://github.com/serobkhachatryan-cpu/estate-home-landing/blob/main/home-assistant/oriel-card/RELEASE-QA-RU.md) |
+| Release manifest | v20 checksum and verified behaviour | [Open v20 manifest](https://github.com/serobkhachatryan-cpu/estate-home-landing/blob/main/home-assistant/oriel-card/RELEASE-v20.md) |
+| Aldworth → Vitaliy handoff (Russian) | Clean single-card installation, live/Recorder semantics and acceptance | [Open handoff](https://github.com/serobkhachatryan-cpu/estate-home-landing/blob/main/home-assistant/oriel-card/ALDWORTH-ADMIN-HANDOFF-RU.md) |
+| Aldworth template YAML | Public, non-sensitive configuration shape | [Open template](https://github.com/serobkhachatryan-cpu/estate-home-landing/blob/main/home-assistant/oriel-card/examples/aldworth-card.template.yaml) |
 | Aldworth pilot boundary | Approved data, access and delivery boundary | [Open pilot boundary](https://github.com/serobkhachatryan-cpu/estate-home-landing/blob/main/docs/aldworth-oriel-pilot-boundary-ru.md) |
 
 The links are public HTTPS URLs. No Home Assistant backup, Recorder database,
 Long-Lived Access Token, password, network address, or raw Aldworth data is
 included in the published files.
+
+The complete Aldworth card YAML is intentionally **not** a public download: it
+contains approved entity topology, historical usage and tariff estimates. It
+must be handed only to the project's approved Home Assistant administrator by
+a controlled channel. The public template is safe to inspect but cannot be
+used to reproduce the estate's private history.
 
 ## Before installing
 
@@ -85,7 +95,7 @@ integration.
 4. Enter this URL:
 
    ```text
-   /local/oriel/oriel-card.js?v=7
+   /local/oriel/oriel-card.js?v=20
    ```
 
 5. Choose **JavaScript module**.
@@ -99,8 +109,14 @@ integration.
 
 ```yaml
 type: custom:oriel-card
+history_weeks: 8
+statistics:
+  history: true
+  # Europe/London is the default; state it explicitly for a UK estate.
+  timezone: Europe/London
 entity_ids:
   electricity:
+    # The first approved sensor is the stable primary weekly/Recorder source.
     - sensor.REPLACE_WITH_APPROVED_ELECTRICITY_SOURCE
   water:
     - sensor.REPLACE_WITH_APPROVED_WATER_SOURCE
@@ -108,11 +124,35 @@ entity_ids:
     - sensor.REPLACE_WITH_APPROVED_FUEL_SOURCE
   power:
     - sensor.REPLACE_WITH_APPROVED_BACKUP_POWER_SOURCE
-statistics: true
 ```
 
 Replace only the placeholders with owner-approved entity IDs. Omit an entity
 only when no approved source exists; never substitute a guessed ID.
+
+For an explicit, verified current-week tariff estimate, replace the existing
+`statistics:` block with the following version, then add only approved monetary
+cumulative counters:
+
+```yaml
+statistics:
+  history: true
+  cost_history: true
+  timezone: Europe/London
+
+# Add this top-level block next to entity_ids:, not inside it.
+cost_entity_ids:
+  electricity:
+    - sensor.REPLACE_WITH_APPROVED_PHASE_A_COST
+    - sensor.REPLACE_WITH_APPROVED_PHASE_B_COST
+    - sensor.REPLACE_WITH_APPROVED_PHASE_C_COST
+```
+
+This is not a shortcut for showing an arbitrary live price. Every listed
+counter must be present, monetary and `state_class: total_increasing`, with a
+reset-free Recorder history since the UK Monday baseline. The v20 card derives
+GBP from Recorder deltas only and shows `Withheld` when it cannot prove that
+condition; it never sums the current monetary states. The result is labelled
+**tariff estimate**, not an invoice or cash-spend figure.
 
 ### A3a. Put Oriel alongside other cards
 
@@ -127,10 +167,27 @@ install Oriel. Keep it as the default quick overview if desired, or make the
 editable dashboard the household landing page only after the owner approves
 that navigation choice.
 
-`statistics: true` enables a read-only request to the signed-in Home Assistant
-Recorder for the selected approved source. It creates the six-week chart from
-recorded states; no data leaves Home Assistant and no device service is called.
-The card deliberately does not estimate a blank week.
+`statistics.history: true` enables a read-only same-origin request to the
+signed-in Home Assistant Recorder for the **first** approved
+`entity_ids.<system>` sensor. That first position is a deliberate stable
+primary source: do not reorder it unless its historical series has been
+reviewed. The card never silently falls back from a main meter to a secondary
+feeder because availability changes.
+
+`Europe/London` is the default time zone for Recorder and archive processing.
+It defines UK weeks as Monday 00:00 to Sunday 23:59:59, including British
+Summer Time transitions. A weekly consumption value is calculated only for a
+cumulative meter with a valid pre-week baseline and a later in-week Recorder
+sample. A single point, reset, gap, missing permission or Recorder failure is
+shown as **No record** / a visible warning—not as the meter's absolute state
+or as zero.
+
+The card's top **Live now** snapshot is the current approved Home Assistant
+state; it is not a weekly use figure. If imported `archive_weekly_values` are
+also configured, they remain an audited closed-week archive. The live snapshot
+and the separately calculated **This UK week · Recorder** value are displayed
+alongside it but are intentionally not appended to or merged into the imported
+archive ribbon. No data leaves Home Assistant and no device service is called.
 
 ### A3b. Optional source / feeder breakdown
 
@@ -168,16 +225,18 @@ source_breakdowns:
 `source_breakdowns` is a separate exact allowlist, so the sources do not need
 to be repeated in `entity_ids`. Source archive arrays must be aligned, in the
 same latest-to-oldest UK Monday–Sunday order, with the parent system's archive
-arrays. If the arrays are missing or misaligned, that row says **No aligned
-archive history** rather than displaying zero or an estimate.
+arrays. Every supplied `archive_week_starts` item must be a real consecutive
+UK Monday. Invalid dates, non-Mondays, gaps, duplicate weeks, or mismatched
+array lengths/order are withheld as **No aligned archive history**, never
+displayed as zero or an estimate.
 
 The default `relation: independent` is never summed with the overall value.
 `relation: part_of_total` only allows a percentage when all components have the
 same recorded-day coverage and reconcile to the parent meter within rounding
 tolerance. The card never allocates a tariff estimate, invoice, cash payment
 or GBP spend across sources. With no imported archive, opening this dropdown
-can make read-only Recorder requests only for its explicit sources (maximum
-16); closing it makes no extra history request.
+with `statistics.history: true` can make read-only Recorder requests only for
+its explicit sources (maximum 16); closing it makes no extra history request.
 
 ### A4. Optional: full trusted-admin catalogue
 
@@ -255,7 +314,10 @@ The panel and card have separate JS files and neither depends on the other.
 After installation:
 
 - The card/panel opens without an external login screen.
-- Each displayed source matches its state in **Developer tools → States**.
+- The **Live now** snapshot and each displayed source match their state in
+  **Developer tools → States**.
+- With `statistics.history: true`, validate at least two UK weeks against
+  Recorder; a missing/reset/incomplete period must remain **No record**.
 - A source-breakdown row is either explicitly configured and aligned with the
   selected week, or it is visibly withheld; independent meters are not added
   together.
@@ -271,7 +333,7 @@ After installation:
 3. Increment the cache version in the resource URL, for example:
 
    ```text
-   /local/oriel/oriel-card.js?v=2
+   /local/oriel/oriel-card.js?v=20
    ```
 
    For the panel, update its `module_url` version similarly.

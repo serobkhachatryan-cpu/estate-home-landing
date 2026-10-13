@@ -2,22 +2,35 @@
 
 For the complete administrator handoff, including public download links, see
 [Oriel for Home Assistant — administrator guide](../ADMINISTRATOR-GUIDE.md).
+For the server release and acceptance checklist for v20, see
+[RELEASE-QA-RU.md](RELEASE-QA-RU.md).
 
 This is a read-only custom card for a standard Home Assistant dashboard. It is
 not a `panel_custom` page.
 
 1. Copy `oriel-card.js` to `/config/www/oriel/oriel-card.js`.
-2. Add `/local/oriel/oriel-card.js?v=7` as a JavaScript module resource in
+2. Add `/local/oriel/oriel-card.js?v=20` as a JavaScript module resource in
    **Settings → Dashboards → Resources**.
 3. Add a Manual card to any dashboard:
 
 ```yaml
 type: custom:oriel-card
+history_weeks: 8
+statistics:
+  history: true
+  # Optional verified current-week tariff estimate from Recorder deltas of
+  # every approved cost counter. Do not derive GBP from current raw states.
+  cost_history: true
+  # Europe/London is the default when this line is omitted. Keep it explicit
+  # for a UK estate so Recorder and archive weeks use Mon–Sun consistently.
+  timezone: Europe/London
 entity_ids:
   electricity:
+    # The first approved ID is the stable primary source for the weekly
+    # Recorder ribbon. Keep it first; later IDs are live approved sources.
     - sensor.shellypro3em_9454c5b9da04_energy
   water:
-    - sensor.main_water_total_l
+    - sensor.house_water_1_total_l
 
 # Optional private archive data. Each list is latest -> oldest and must align
 # to the same Monday–Sunday UK weeks. Do not put an archive or billing data in
@@ -105,12 +118,14 @@ default and is never added to the total. The card does not allocate a tariff
 estimate, bill, cash payment or GBP figure across a breakdown.
 
 Without private archive arrays, a breakdown source can use Recorder history
-only when `statistics: true` is enabled and the reader opens the dropdown. The
-card then makes a read-only history request for each explicitly configured
-source (maximum 16); it never discovers or queries all sensors.
+only when `statistics.history: true` is enabled and the reader opens the
+dropdown. The card then makes a read-only history request for each explicitly
+configured source (maximum 16); it never discovers or queries all sensors.
 
-`archive_week_starts` is the strongest audit trail: use explicit UK Mondays
-for every imported row. If it is omitted, `archive_anchor` and
+`archive_week_starts` is the strongest audit trail: use one real, consecutive
+UK Monday for every imported row. Invalid dates, non-Mondays, gaps, duplicate
+weeks, or a length/order mismatch cause the imported archive to be withheld;
+they are never rendered as zero. If it is omitted, `archive_anchor` and
 `archive_timezone` derive the same Monday–Sunday weeks, for example
 `14–20 Sept 2026`.
 
@@ -130,6 +145,39 @@ configured.
 archive in a separate test instance where the historical source is not a live
 state today: it names the approved archived source but never invents a current
 value for it.
+
+## Live state and Recorder history
+
+The card always renders a **Live now** snapshot from the current approved
+Home Assistant state delivered to the signed-in browser. It is not a weekly
+consumption figure. With `statistics.history: true`, the card makes a
+read-only same-origin Recorder request for the **first** approved
+`entity_ids.<system>` sensor only. That stable first position is intentional:
+the weekly ribbon must not silently change from a main meter to a secondary
+feeder merely because availability changes.
+
+`Europe/London` is the default time zone for Recorder and archive calculations.
+Weeks run Monday 00:00 through Sunday 23:59:59 in that zone, including across
+British Summer Time changes. A Recorder-derived weekly use is shown only for a
+cumulative meter with a valid pre-week baseline and a later sample in the
+week. A single reading, counter reset, missing history or permission failure
+shows **No record** / a visible warning rather than an absolute counter value
+or a synthetic zero.
+
+When private `archive_weekly_values` are supplied, they represent an imported
+closed-week record. The current live state and the separately calculated
+**This UK week · Recorder** value remain visibly separate from that archive;
+the card does not silently append or merge the two series. This prevents a
+live counter or partial current week from being mistaken for an audited
+historical row.
+
+When `statistics.cost_history: true` and explicit `cost_entity_ids` are
+provided, the card also shows a separate **This UK week · tariff estimate**.
+It uses only Recorder deltas from every approved monetary, cumulative cost
+counter; it never sums their raw current states. A missing baseline, reset,
+gap, non-monetary/non-cumulative component or Recorder error withholds the GBP
+estimate rather than presenting a synthetic value. This is a tariff estimate,
+not an invoice, cash payment or finance ledger.
 
 The card reads only `hass.states` from the signed-in dashboard. Its weekly
 sources are allowlist-only: without exact `entity_ids` it displays no source,
@@ -156,7 +204,7 @@ sensor_groups:
     label: Water operations
     icon: "≈"
     entity_ids:
-      - sensor.main_water_total_l
+      - sensor.house_water_1_total_l
       - sensor.main_water_flow
       - sensor.lodge_water_tank_volume
   - id: weather
