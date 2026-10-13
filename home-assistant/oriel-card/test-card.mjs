@@ -65,6 +65,17 @@ test('does not infer an approved source from the complete sensor state map', asy
   assert.doesNotMatch(subject.shadowRoot.innerHTML, /Unapproved meter/);
 });
 
+test('does not request another ribbon-centre animation for an ordinary Home Assistant state refresh', async () => {
+  const subject = card();
+  subject.setConfig({ type: 'custom:oriel-card', entity_ids: { electricity: ['sensor.fixture_energy'], water: [], fuel: [], power: [] } });
+  subject._pendingTimelineCenter = false;
+  subject.hass = { states: { 'sensor.fixture_energy': state('sensor.fixture_energy', 4200, 'Approved meter', 'kWh', 'energy') } };
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(subject._pendingTimelineCenter, false);
+  assert.doesNotMatch(source, /scroll-behavior:smooth/);
+  assert.doesNotMatch(source, /scroll-snap-type:y mandatory/);
+});
+
 test('requests Recorder data from UK midnight instead of 01:00 during BST', async () => {
   const subject = card();
   let request;
