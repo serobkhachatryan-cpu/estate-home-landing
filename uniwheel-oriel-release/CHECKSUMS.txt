@@ -1,0 +1,6 @@
+# Oriel for UniWheel static release v1.0.0
+# SHA-256 of the files to upload. Recalculate if any file changes.
+38267edd6a4212f7e97273be17240a62541b7d7386330d6c59d5acca5cce5fc0  oriel/index.html
+503fcf3b891f343a709ad1aa6f92a8c884bf1579549848bf66c022000cd1cce4  oriel/assets/oriel.css
+116cf2735a9a0bda90a3d152bd453e2366f91114d828a2d0f718bd79132b0905  oriel/assets/oriel.js
+5b7e1c31e1689c053abb7a3ffc15a305f0d9994b2a8d889e7999065a08b835cd  oriel/assets/oriel-mark.svg
