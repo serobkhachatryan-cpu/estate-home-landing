@@ -1,0 +1,41 @@
+# Public, non-sensitive template for the Aldworth Oriel card.
+#
+# It intentionally contains no estate history, tariff numbers, credentials or
+# topology. Vitaliy receives the real `aldworth-card.yaml` privately from the
+# project owner after the entity IDs and historical values have been approved.
+
+type: custom:oriel-card
+history_weeks: 32
+statistics:
+  history: true
+  # Opt-in verified weekly tariff estimate from Recorder deltas only.
+  cost_history: true
+  timezone: Europe/London
+
+entity_ids:
+  electricity:
+    # First item is the stable primary source for the weekly Recorder ribbon.
+    - sensor.REPLACE_WITH_APPROVED_ELECTRICITY_TOTAL
+  water:
+    - sensor.REPLACE_WITH_APPROVED_WATER_TOTAL
+  fuel: []
+  power: []
+
+# `cost_entity_ids` must be approved monetary/cumulative sensors that relate
+# to the selected primary electricity meter. The card never derives GBP from a
+# current raw state or an assumed tariff.
+cost_entity_ids:
+  electricity:
+    - sensor.REPLACE_WITH_APPROVED_PHASE_A_ENERGY_COST
+    - sensor.REPLACE_WITH_APPROVED_PHASE_B_ENERGY_COST
+    - sensor.REPLACE_WITH_APPROVED_PHASE_C_ENERGY_COST
+
+# Private fields supplied only in the closed Aldworth configuration:
+# archive_weekly_values
+# archive_week_starts
+# archive_weekly_recorded_days
+# archive_weekly_costs
+# archive_weekly_cost_matching_days
+# archive_cost_source_labels
+# archive_source_details
+# source_breakdowns

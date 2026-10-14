@@ -63,7 +63,7 @@ npm ci
 npm run mvp:check
 ```
 
-`mvp:check` runs the card tests, panel tests, full web build and local historical fixture build. It does not upload data.
+`mvp:check` runs the card tests, panel tests and full web build. It does not need estate data and does not upload anything. The separate private-history command below builds the local fixture only when the approved Aldworth import is present.
 
 ### Safe synthetic UI playground
 
